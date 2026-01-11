@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: connectflow-messenger
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Add these environment variables in production:
+      # - DATABASE_URL=your_database_url
+      # - REDIS_URL=your_redis_url
+      # - JWT_SECRET=your_super_secret_key
+      # - CLIENT_URL=https://your-domain.com
+    volumes:
+      - app_data:/app/data
+      - app_uploads:/app/uploads
+      - app_avatars:/app/avatars
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  app_data:
+  app_uploads:
+  app_avatars:
