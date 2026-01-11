@@ -1,24 +1,15 @@
 /**
- * ConnectFlow Messenger - WhatsApp Style Application
- * Features: Chats, Status, Calls, Groups, Media, and more
+ * ConnectFlow Messenger - Simplified Working Version
  */
 
 class ConnectFlowApp {
   constructor() {
-    // Core state
     this.currentUser = null;
     this.selectedChat = null;
-    this.selectedUser = null;
     this.socket = null;
-    this.messages = new Map();
+    this.messages = [];
     this.chats = [];
     this.users = [];
-    this.groups = [];
-    this.statuses = [];
-    this.calls = [];
-    
-    // UI state
-    this.currentView = 'chats';
     this.isRecording = false;
     this.recordingStartTime = null;
     this.mediaRecorder = null;
@@ -26,22 +17,8 @@ class ConnectFlowApp {
     this.recordingTimer = null;
     this.typingTimeout = null;
     this.replyMessage = null;
-    this.forwardMessage = null;
-    this.selectedMessages = new Set();
-    this.isMultiSelectMode = false;
-    
-    // Media state
-    this.activeAudio = null;
-    this.imageViewerOpen = false;
-    
-    // Search state
-    this.searchMode = false;
-    this.searchQuery = '';
-    
-    // Dark mode
     this.darkMode = false;
     
-    // Initialize
     this.init();
   }
 
@@ -49,8 +26,6 @@ class ConnectFlowApp {
     this.loadSettings();
     this.checkAuth();
     this.bindEvents();
-    this.loadEmojis();
-    this.generateStickers();
   }
 
   // ==================== Authentication ====================
@@ -63,6 +38,7 @@ class ConnectFlowApp {
         this.currentUser = data.user;
         this.showMainApp();
         this.connectSocket();
+        this.loadData();
       } else {
         this.showAuthScreen();
       }
@@ -86,7 +62,7 @@ class ConnectFlowApp {
         this.currentUser = data.user;
         this.showMainApp();
         this.connectSocket();
-        this.loadChats();
+        this.loadData();
       } else {
         throw new Error(data.error || 'Login failed');
       }
@@ -109,7 +85,7 @@ class ConnectFlowApp {
         this.currentUser = data.user;
         this.showMainApp();
         this.connectSocket();
-        this.loadChats();
+        this.loadData();
       } else {
         throw new Error(data.error || 'Registration failed');
       }
@@ -135,30 +111,27 @@ class ConnectFlowApp {
   // ==================== Socket Connection ====================
 
   connectSocket() {
+    const token = this.getCookie('token');
+    if (!token) return;
+    
     this.socket = io({
-      auth: {
-        token: this.getCookie('token')
-      },
+      auth: { token },
       transports: ['websocket', 'polling']
     });
 
     this.socket.on('connect', () => {
-      console.log('Connected to server');
-      this.socket.emit('authenticate', this.getCookie('token'));
-      this.loadChats();
-      this.loadStatuses();
-      this.loadCalls();
+      console.log('Socket connected');
+      this.socket.emit('authenticate', token);
     });
 
     this.socket.on('disconnect', () => {
-      console.log('Disconnected from server');
+      console.log('Socket disconnected');
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('Connection error:', error);
     });
 
-    // Message events
     this.socket.on('receive_message', (message) => {
       this.handleReceiveMessage(message);
     });
@@ -167,15 +140,6 @@ class ConnectFlowApp {
       this.handleMessageSent(message);
     });
 
-    this.socket.on('message_delivered', (data) => {
-      this.updateMessageStatus(data.messageId, 'delivered');
-    });
-
-    this.socket.on('message_read', (data) => {
-      this.updateMessageStatus(data.messageId, 'read');
-    });
-
-    // User status events
     this.socket.on('user_online', (data) => {
       this.updateUserOnlineStatus(data.userId, true);
     });
@@ -184,7 +148,6 @@ class ConnectFlowApp {
       this.updateUserOnlineStatus(data.userId, false);
     });
 
-    // Typing events
     this.socket.on('user_typing', (data) => {
       if (this.selectedChat?.id === data.userId) {
         this.showTypingIndicator();
@@ -194,128 +157,61 @@ class ConnectFlowApp {
     this.socket.on('user_stop_typing', (data) => {
       this.hideTypingIndicator();
     });
-
-    // Group events
-    this.socket.on('group_created', (group) => {
-      this.groups.push(group);
-      this.renderGroups();
-      this.loadChats();
-    });
-
-    this.socket.on('group_updated', (group) => {
-      const index = this.groups.findIndex(g => g.id === group.id);
-      if (index !== -1) {
-        this.groups[index] = group;
-      }
-      this.renderGroups();
-    });
-
-    // Status events
-    this.socket.on('status_update', (status) => {
-      this.handleStatusUpdate(status);
-    });
-
-    // Call events
-    this.socket.on('incoming_call', (data) => {
-      this.handleIncomingCall(data);
-    });
-
-    this.socket.on('call_ended', (data) => {
-      this.handleCallEnded(data);
-    });
-
-    // Message reactions
-    this.socket.on('message_reaction', (data) => {
-      this.handleMessageReaction(data);
-    });
   }
 
-  // ==================== Message Handling ====================
-
   handleReceiveMessage(message) {
-    // Add to messages map
-    const chatKey = this.getChatKey(message.sender_id, message.receiver_id);
-    if (!this.messages.has(chatKey)) {
-      this.messages.set(chatKey, []);
+    this.messages.push(message);
+    
+    // Update or create chat
+    const chatKey = message.sender_id === this.currentUser.id ? message.receiver_id : message.sender_id;
+    let chat = this.chats.find(c => c.id === chatKey);
+    
+    if (!chat) {
+      const user = this.users.find(u => u.id === chatKey);
+      chat = {
+        id: chatKey,
+        type: 'private',
+        name: user?.username || 'مستخدم',
+        avatar: user?.avatar || '/avatars/default.png',
+        lastMessage: this.formatLastMessage(message),
+        lastMessageTime: message.created_at,
+        unreadCount: 0,
+        is_online: user?.is_online || 0
+      };
+      this.chats.unshift(chat);
     }
-    this.messages.get(chatKey).push(message);
-
-    // Update or add chat
-    this.updateChatFromMessage(message);
-
-    // If chatting with this user, add to view
-    if (this.selectedChat?.id === message.sender_id || this.selectedChat?.id === message.receiver_id) {
-      this.appendMessage(message, message.sender_id === this.currentUser.id);
+    
+    chat.lastMessage = this.formatLastMessage(message);
+    chat.lastMessageTime = message.created_at;
+    
+    if (message.sender_id !== this.currentUser.id && this.selectedChat?.id !== chatKey) {
+      chat.unreadCount = (chat.unreadCount || 0) + 1;
+    }
+    
+    this.renderChatsList();
+    
+    if (this.selectedChat?.id === chatKey) {
+      this.appendMessage(message, false);
       this.markMessagesAsRead([message.id]);
     }
-
-    // Show notification
-    this.showMessageNotification(message);
-
-    // Play notification sound
+    
     this.playNotificationSound();
   }
 
   handleMessageSent(message) {
-    const chatKey = this.getChatKey(message.sender_id, message.receiver_id);
-    if (!this.messages.has(chatKey)) {
-      this.messages.set(chatKey, []);
-    }
-    
-    const messages = this.messages.get(chatKey);
-    const existingIndex = messages.findIndex(m => m.tempId === message.tempId);
-    
+    const existingIndex = this.messages.findIndex(m => m.tempId === message.tempId);
     if (existingIndex !== -1) {
-      messages[existingIndex] = { ...message, tempId: undefined };
+      this.messages[existingIndex] = { ...message, tempId: undefined };
     } else {
-      messages.push(message);
+      this.messages.push(message);
     }
-
-    if (this.selectedChat && chatKey === this.getChatKey(this.selectedChat.id, this.currentUser.id)) {
-      const messageElement = document.querySelector(`[data-temp-id="${message.tempId}"]`);
-      if (messageElement) {
-        messageElement.dataset.messageId = message.id;
-        messageElement.classList.add('sent');
-        messageElement.classList.remove('pending');
-      }
-    }
-  }
-
-  updateChatFromMessage(message) {
-    const otherUserId = message.sender_id === this.currentUser.id ? message.receiver_id : message.sender_id;
-    let chat = this.chats.find(c => c.id === otherUserId);
     
-    if (!chat) {
-      const user = this.users.find(u => u.id === otherUserId) || { 
-        id: otherUserId, 
-        username: 'مستخدم',
-        avatar: '/avatars/default.png'
-      };
-      chat = {
-        id: otherUserId,
-        type: 'private',
-        name: user.username,
-        avatar: user.avatar,
-        lastMessage: null,
-        lastMessageTime: null,
-        unreadCount: 0,
-        isOnline: user.is_online || false,
-        isPinned: false,
-        isArchived: false,
-        isMuted: false,
-        starred: false
-      };
-      this.chats.unshift(chat);
+    const messageElement = document.querySelector(`[data-temp-id="${message.tempId}"]`);
+    if (messageElement) {
+      messageElement.dataset.messageId = message.id;
+      messageElement.dataset.tempId = '';
+      messageElement.classList.remove('pending');
     }
-
-    chat.lastMessage = this.formatLastMessage(message);
-    chat.lastMessageTime = message.created_at;
-    
-    if (message.sender_id !== this.currentUser.id && this.selectedChat?.id !== otherUserId) {
-      chat.unreadCount = (chat.unreadCount || 0) + 1;
-    }
-
-    this.renderChatsList();
   }
 
   formatLastMessage(message) {
@@ -325,45 +221,51 @@ class ConnectFlowApp {
     if (message.type === 'document') return '📄 مستند';
     if (message.type === 'location') return '📍 موقع';
     if (message.type === 'contact') return '👤 جهة اتصال';
-    if (message.type === 'sticker') return '🎨 ملصق';
-    if (message.content.length > 30) return message.content.substring(0, 30) + '...';
-    return message.content || 'رسالة وسائط';
+    if (message.content?.length > 30) return message.content.substring(0, 30) + '...';
+    return message.content || 'وسائط';
   }
 
-  // ==================== Chat Operations ====================
+  // ==================== Data Loading ====================
+
+  async loadData() {
+    await Promise.all([
+      this.loadChats(),
+      this.loadUsers(),
+      this.loadCalls()
+    ]);
+  }
 
   async loadChats() {
     try {
-      const response = await fetch('/api/users');
+      const response = await fetch('/api/chats');
       const data = await response.json();
-      this.users = data.users;
-      
-      // Load sample chats for demo
-      this.initializeSampleChats();
+      this.chats = data.chats || [];
       this.renderChatsList();
     } catch (error) {
       console.error('Error loading chats:', error);
-      this.initializeSampleChats();
-      this.renderChatsList();
+      this.chats = [];
     }
   }
 
-  initializeSampleChats() {
-    if (this.chats.length === 0 && this.users.length > 0) {
-      this.chats = this.users.slice(0, 5).map(user => ({
-        id: user.id,
-        type: 'private',
-        name: user.username,
-        avatar: user.avatar || '/avatars/default.png',
-        lastMessage: 'مرحباً! كيف حالك؟',
-        lastMessageTime: new Date(Date.now() - Math.random() * 3600000 * 24).toISOString(),
-        unreadCount: Math.floor(Math.random() * 5),
-        isOnline: user.is_online || false,
-        isPinned: false,
-        isArchived: false,
-        isMuted: false,
-        starred: false
-      }));
+  async loadUsers() {
+    try {
+      const response = await fetch('/api/contacts');
+      const data = await response.json();
+      this.users = data.contacts || [];
+      this.renderNewChatContacts();
+    } catch (error) {
+      console.error('Error loading users:', error);
+      this.users = [];
+    }
+  }
+
+  async loadCalls() {
+    try {
+      const response = await fetch('/api/calls');
+      const data = await response.json();
+      this.renderCallsList(data.calls || []);
+    } catch (error) {
+      console.error('Error loading calls:', error);
     }
   }
 
@@ -371,56 +273,16 @@ class ConnectFlowApp {
     try {
       const response = await fetch(`/api/messages/${userId}`);
       const data = await response.json();
-      
-      const chatKey = this.getChatKey(userId, this.currentUser.id);
-      this.messages.set(chatKey, data.messages);
-      
-      this.renderMessages(userId);
+      this.messages = data.messages || [];
+      this.renderMessages();
     } catch (error) {
       console.error('Error loading messages:', error);
-      // Load sample messages
-      this.loadSampleMessages(userId);
+      this.messages = [];
+      this.renderMessages();
     }
   }
 
-  loadSampleMessages(userId) {
-    const sampleMessages = [];
-    const now = Date.now();
-    
-    for (let i = 0; i < 10; i++) {
-      const isSent = i % 2 === 0;
-      sampleMessages.push({
-        id: `sample-${i}`,
-        sender_id: isSent ? this.currentUser.id : userId,
-        receiver_id: isSent ? userId : this.currentUser.id,
-        content: this.getSampleMessage(i),
-        type: 'text',
-        created_at: new Date(now - (10 - i) * 3600000).toISOString(),
-        is_read: true,
-        status: isSent ? 'read' : null
-      });
-    }
-
-    const chatKey = this.getChatKey(userId, this.currentUser.id);
-    this.messages.set(chatKey, sampleMessages);
-    this.renderMessages(userId);
-  }
-
-  getSampleMessage(index) {
-    const messages = [
-      'مرحباً! كيف حالك؟',
-      'بخير الحمد لله، وأنت؟',
-      'أنا بخير شكراً',
-      'هل لديك وقت للحديث اليوم؟',
-      'بالتأكيد، متى يناسبك؟',
-      'ما رأيك في المساء؟',
-      'ممتاز، أراك مساءً',
-      'إلى اللقاء',
-      '👋 وداعاً',
-      'مع السلامة!'
-    ];
-    return messages[index % messages.length];
-  }
+  // ==================== Messaging ====================
 
   sendMessage(content, type = 'text', fileUrl = null) {
     if (!this.selectedChat) return;
@@ -438,10 +300,9 @@ class ConnectFlowApp {
       status: 'pending'
     };
 
-    // Add to UI immediately
+    this.messages.push(message);
     this.appendMessage(message, true);
 
-    // Send via socket
     this.socket.emit('send_message', {
       receiverId: this.selectedChat.id,
       content: content || '',
@@ -449,45 +310,27 @@ class ConnectFlowApp {
       fileUrl
     });
 
-    // Clear input
     document.getElementById('message-input').value = '';
     this.autoResizeTextarea();
   }
 
   appendMessage(message, isSent) {
-    const container = document.getElementById('messages-container');
-    const chatKey = this.getChatKey(this.selectedChat?.id, this.currentUser.id);
-    
-    if (!this.messages.has(chatKey)) {
-      this.messages.set(chatKey, []);
-    }
-    this.messages.get(chatKey).push(message);
-
+    const container = document.getElementById('chat-content');
     const messageHtml = this.createMessageElement(message, isSent);
     container.insertAdjacentHTML('beforeend', messageHtml);
     this.scrollToBottom();
-
-    // Bind message events
-    this.bindMessageEvents(container.lastElementChild);
   }
 
   createMessageElement(message, isSent) {
     const time = this.formatTime(message.created_at);
     const date = this.formatDate(message.created_at);
-    const status = message.status || (isSent ? 'sent' : null);
     
     let content = '';
-    let additionalClass = '';
-
+    
     switch (message.type) {
       case 'image':
-        content = `<div class="message-bubble image" onclick="app.viewImage('${message.file_url}', '${this.escapeHtml(message.content)}')">
+        content = `<div class="message-bubble image" onclick="app.viewImage('${message.file_url}')">
           <img src="${message.file_url}" alt="صورة" loading="lazy">
-        </div>`;
-        break;
-      case 'video':
-        content = `<div class="message-bubble video">
-          <video src="${message.file_url}" controls></video>
         </div>`;
         break;
       case 'audio':
@@ -497,150 +340,65 @@ class ConnectFlowApp {
           </button>
           <div class="audio-info">
             <span class="audio-duration">0:30</span>
-            <div class="audio-waveform">
-              <span></span><span></span><span></span><span></span><span></span>
-            </div>
           </div>
+        </div>`;
+        break;
+      case 'video':
+        content = `<div class="message-bubble video">
+          <video src="${message.file_url}" controls></video>
         </div>`;
         break;
       case 'document':
         content = `<div class="message-bubble document">
-          <div class="document-icon">
-            <i class="fas fa-file-pdf"></i>
-          </div>
+          <div class="document-icon"><i class="fas fa-file-pdf"></i></div>
           <div class="document-info">
             <span class="document-name">${message.content || 'مستند'}</span>
-            <span class="document-size">PDF</span>
           </div>
-          <button class="document-download" onclick="app.downloadFile('${message.file_url}')">
+          <button class="document-download" onclick="window.open('${message.file_url}', '_blank')">
             <i class="fas fa-download"></i>
           </button>
-        </div>`;
-        break;
-      case 'location':
-        content = `<div class="message-bubble location" onclick="app.openLocation('${message.file_url}', '${message.content}')">
-          <div class="location-preview">
-            <i class="fas fa-map-marker-alt"></i>
-          </div>
-          <div class="location-info">
-            <span>${message.content || 'موقع جغرافي'}</span>
-          </div>
-        </div>`;
-        break;
-      case 'contact':
-        content = `<div class="message-bubble contact">
-          <div class="contact-card">
-            <div class="contact-avatar">
-              <i class="fas fa-user"></i>
-            </div>
-            <div class="contact-info">
-              <span class="contact-name">${message.content}</span>
-            </div>
-          </div>
-          <button class="contact-add">إضافة جهة اتصال</button>
-        </div>`;
-        break;
-      case 'sticker':
-        content = `<div class="message-bubble sticker">
-          <img src="${message.content}" alt="ملصق" onclick="app.viewSticker('${message.content}')">
         </div>`;
         break;
       default:
         content = `<div class="message-bubble text">${this.escapeHtml(message.content)}</div>`;
     }
 
-    if (this.replyMessage && this.replyMessage.id === message.id) {
-      additionalClass += ' reply-message';
-    }
-
-    const replyPreview = message.reply_to ? `
-      <div class="reply-preview-mini" onclick="app.jumpToMessage('${message.reply_to.id}')">
-        <span class="reply-sender">${message.reply_to.sender_name || 'مستخدم'}</span>
-        <span class="reply-text">${message.reply_to.content?.substring(0, 30)}...</span>
-      </div>
-    ` : '';
-
-    const statusIcons = isSent ? this.getStatusIcons(status) : '';
-
-    const reactions = message.reactions ? this.renderReactions(message.reactions) : '';
+    const statusIcons = isSent ? '<span class="message-status sent"><i class="fas fa-clock"></i></span>' : '';
 
     return `
-      <div class="message ${isSent ? 'sent' : 'received'} ${additionalClass}" 
+      <div class="message ${isSent ? 'sent' : 'received'}" 
            data-message-id="${message.id || message.tempId}" 
            data-temp-id="${message.tempId || ''}"
-           onclick="app.showMessageContextMenu(event, '${message.id || message.tempId}')">
+           onclick="app.showMessageContextMenu(event, '${message.id || message.tempId}')"
+           ondblclick="app.startReply('${message.id || message.tempId}')">
         ${!isSent ? `
           <div class="message-avatar">
             <img src="${this.selectedChat?.avatar || '/avatars/default.png'}" alt="">
           </div>
         ` : ''}
         <div class="message-content">
-          ${replyPreview}
           ${content}
           <div class="message-meta">
-            ${date !== this.formatDate(Date.now()) ? `<span class="message-date">${date}</span>` : ''}
             <span class="message-time">${time}</span>
             ${statusIcons}
           </div>
-          ${reactions}
         </div>
       </div>
     `;
   }
 
-  getStatusIcons(status) {
-    if (!status) return '';
-    
-    const icons = {
-      'pending': '<span class="message-status pending"><i class="fas fa-clock"></i></span>',
-      'sent': '<span class="message-status sent"><i class="fas fa-check"></i></span>',
-      'delivered': '<span class="message-status delivered"><i class="fas fa-check-double"></i></span>',
-      'read': '<span class="message-status read"><i class="fas fa-check-double" style="color: #53bdeb;"></i></span>'
-    };
-    return icons[status] || '';
-  }
-
-  renderReactions(reactions) {
-    if (!reactions || Object.keys(reactions).length === 0) return '';
-
-    const reactionCounts = {};
-    reactions.forEach(r => {
-      reactionCounts[r.emoji] = (reactionCounts[r.emoji] || 0) + 1;
-    });
-
-    return `
-      <div class="message-reactions">
-        ${Object.entries(reactionCounts).map(([emoji, count]) => `
-          <button class="reaction-btn" onclick="app.addReaction('${emoji}')">
-            ${emoji} <span>${count}</span>
-          </button>
-        `).join('')}
-        <button class="reaction-add" onclick="app.showReactionPicker()">
-          <i class="fas fa-plus"></i>
-        </button>
-      </div>
-    `;
-  }
-
-  renderMessages(userId) {
-    const container = document.getElementById('messages-container');
+  renderMessages() {
+    const container = document.getElementById('chat-content');
     container.innerHTML = '';
-
-    const chatKey = this.getChatKey(userId, this.currentUser.id);
-    const messages = this.messages.get(chatKey) || [];
-
+    
     let lastDate = null;
     
-    messages.forEach((message, index) => {
+    this.messages.forEach(message => {
       const messageDate = this.formatDate(message.created_at);
       
       if (messageDate !== lastDate) {
         lastDate = messageDate;
-        const dateHtml = `
-          <div class="date-separator">
-            <span>${messageDate}</span>
-          </div>
-        `;
+        const dateHtml = `<div class="date-separator"><span>${messageDate}</span></div>`;
         container.insertAdjacentHTML('beforeend', dateHtml);
       }
 
@@ -649,54 +407,56 @@ class ConnectFlowApp {
       container.insertAdjacentHTML('beforeend', messageHtml);
     });
 
-    // Bind message events
-    container.querySelectorAll('.message').forEach(el => {
-      this.bindMessageEvents(el);
-    });
-
     this.scrollToBottom();
   }
 
-  bindMessageEvents(element) {
-    // Double click to reply
-    element.addEventListener('dblclick', () => {
-      const messageId = element.dataset.messageId;
-      this.startReply(messageId);
-    });
+  async markMessagesAsRead(messageIds) {
+    if (!messageIds || messageIds.length === 0) return;
+    
+    try {
+      await fetch('/api/messages/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds })
+      });
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
   }
 
-  // ==================== Chat UI ====================
+  async deleteMessage(messageId) {
+    try {
+      await fetch(`/api/messages/${messageId}`, { method: 'DELETE' });
+      
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (messageElement) {
+        messageElement.style.opacity = '0';
+        messageElement.style.transform = 'translateX(-20px)';
+        setTimeout(() => messageElement.remove(), 300);
+      }
+      
+      this.messages = this.messages.filter(m => m.id !== messageId);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  }
+
+  // ==================== Chat Operations ====================
 
   renderChatsList() {
     const container = document.getElementById('chats-list');
     const searchTerm = document.getElementById('chat-search')?.value?.toLowerCase() || '';
     
-    let filteredChats = this.chats.filter(chat => {
-      if (!chat.isArchived) {
-        return chat.name.toLowerCase().includes(searchTerm);
-      }
-      return false;
-    });
-
-    // Sort: pinned first, then by last message time
-    filteredChats.sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return new Date(b.lastMessageTime) - new Date(a.lastMessageTime);
-    });
+    let filteredChats = this.chats.filter(chat => 
+      chat.name?.toLowerCase().includes(searchTerm)
+    );
 
     if (filteredChats.length === 0) {
       container.innerHTML = `
         <div class="empty-chats">
-          <div class="empty-icon">
-            <i class="fas fa-comment-slash"></i>
-          </div>
+          <div class="empty-icon"><i class="fas fa-comment-slash"></i></div>
           <h3>لا توجد دردشات بعد</h3>
           <p>ابدأ محادثة جديدة مع أصدقائك</p>
-          <button class="btn-primary" onclick="app.showNewChatPanel()">
-            <i class="fas fa-plus"></i>
-            محادثة جديدة
-          </button>
         </div>
       `;
       return;
@@ -704,30 +464,21 @@ class ConnectFlowApp {
 
     container.innerHTML = filteredChats.map(chat => this.createChatItem(chat)).join('');
 
-    // Bind events
     container.querySelectorAll('.chat-item').forEach(item => {
       item.addEventListener('click', () => {
         const chatId = item.dataset.chatId;
         this.openChat(chatId);
-      });
-      
-      item.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        this.showChatContextMenu(e, chatId);
       });
     });
   }
 
   createChatItem(chat) {
     const time = this.formatChatTime(chat.lastMessageTime);
-    const unreadBadge = chat.unreadCount > 0 ? `<span class="unread-badge">${chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>` : '';
-    const pinnedIcon = chat.isPinned ? '<i class="fas fa-pin chat-pin-icon"></i>' : '';
-    const mutedIcon = chat.isMuted ? '<i class="fas fa-volume-mute chat-muted-icon"></i>' : '';
-    const onlineIndicator = chat.isOnline ? '<span class="online-indicator"></span>' : '';
+    const unreadBadge = chat.unreadCount > 0 ? `<span class="unread-badge">${chat.unreadCount}</span>` : '';
+    const onlineIndicator = chat.is_online ? '<span class="online-indicator"></span>' : '';
 
     return `
-      <div class="chat-item ${chat.isPinned ? 'pinned' : ''}" data-chat-id="${chat.id}">
-        ${pinnedIcon}
+      <div class="chat-item" data-chat-id="${chat.id}">
         <div class="chat-avatar">
           <img src="${chat.avatar || '/avatars/default.png'}" alt="${chat.name}">
           ${onlineIndicator}
@@ -740,7 +491,6 @@ class ConnectFlowApp {
           <div class="chat-preview">
             <span class="chat-last-message">${chat.lastMessage || 'لا توجد رسائل'}</span>
             ${unreadBadge}
-            ${mutedIcon}
           </div>
         </div>
       </div>
@@ -748,28 +498,23 @@ class ConnectFlowApp {
   }
 
   async openChat(chatId) {
-    const chat = this.chats.find(c => c.id === chatId);
+    const chat = this.chats.find(c => c.id === chatId) || this.users.find(u => u.id === chatId);
     if (!chat) return;
 
     this.selectedChat = chat;
-    chat.unreadCount = 0;
+    
+    if (chat.unreadCount) {
+      chat.unreadCount = 0;
+      this.renderChatsList();
+    }
 
-    // Show chat window
     document.getElementById('chat-window').classList.remove('hidden');
     document.getElementById('new-chat-panel').classList.add('hidden');
     document.getElementById('new-group-panel').classList.add('hidden');
-    document.getElementById('user-info-panel').classList.add('hidden');
     document.getElementById('settings-panel').classList.add('hidden');
-    document.getElementById('profile-panel').classList.add('hidden');
 
-    // Update header
     this.updateChatHeader(chat);
-
-    // Load messages
     await this.loadMessages(chatId);
-
-    // Mark as read
-    this.markChatAsRead(chatId);
   }
 
   updateChatHeader(chat) {
@@ -780,8 +525,8 @@ class ConnectFlowApp {
       </div>
       <div class="user-details">
         <span class="username">${chat.name}</span>
-        <span class="status ${chat.isOnline ? 'online' : ''}" id="chat-status-text">
-          ${chat.isOnline ? 'متصل الآن' : 'غير متصل'}
+        <span class="status ${chat.is_online ? 'online' : ''}" id="chat-status-text">
+          ${chat.is_online ? 'متصل الآن' : 'غير متصل'}
         </span>
       </div>
     `;
@@ -794,184 +539,61 @@ class ConnectFlowApp {
     this.hideReplyPreview();
   }
 
-  markChatAsRead(chatId) {
-    const chatKey = this.getChatKey(chatId, this.currentUser.id);
-    const messages = this.messages.get(chatKey) || [];
-    const unreadIds = messages.filter(m => m.sender_id !== this.currentUser.id && !m.is_read).map(m => m.id);
-    
-    if (unreadIds.length > 0) {
-      this.markMessagesAsRead(unreadIds);
+  // ==================== Users & Contacts ====================
+
+  renderNewChatContacts() {
+    const container = document.getElementById('new-chat-contacts');
+    if (this.users.length === 0) {
+      container.innerHTML = '<p style="padding: 20px; text-align: center; color: var(--text-muted);">لا توجد جهات اتصال بعد</p>';
+      return;
     }
-  }
-
-  async markMessagesAsRead(messageIds) {
-    try {
-      await fetch('/api/messages/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageIds })
-      });
-    } catch (error) {
-      console.error('Error marking messages as read:', error);
-    }
-  }
-
-  // ==================== Status ====================
-
-  loadStatuses() {
-    // Sample statuses
-    this.statuses = [
-      {
-        id: 'status-1',
-        userId: this.users[0]?.id || 'user-1',
-        userName: this.users[0]?.username || 'أحمد',
-        userAvatar: this.users[0]?.avatar || '/avatars/default.png',
-        type: 'image',
-        content: 'https://picsum.photos/400/800?random=1',
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        views: 5,
-        reactions: []
-      },
-      {
-        id: 'status-2',
-        userId: this.users[1]?.id || 'user-2',
-        userName: this.users[1]?.username || 'سارة',
-        userAvatar: this.users[1]?.avatar || '/avatars/default.png',
-        type: 'image',
-        content: 'https://picsum.photos/400/800?random=2',
-        createdAt: new Date(Date.now() - 7200000).toISOString(),
-        views: 12,
-        reactions: []
-      }
-    ];
-    this.renderStatuses();
-  }
-
-  renderStatuses() {
-    const container = document.getElementById('status-list');
     
-    // My status
-    const myStatusHtml = `
-      <div class="status-item my-status" onclick="app.viewMyStatus()">
-        <div class="status-avatar">
-          <img src="${this.currentUser?.avatar || '/avatars/default.png'}" alt="">
-          <div class="status-add-btn">
-            <i class="fas fa-plus"></i>
-          </div>
+    container.innerHTML = this.users.map(user => `
+      <div class="contact-item" data-user-id="${user.id}" onclick="app.startChatWithUser('${user.id}')">
+        <div class="contact-avatar">
+          <img src="${user.avatar || '/avatars/default.png'}" alt="${user.username}">
         </div>
-        <div class="status-info">
-          <span class="status-name">حالتي</span>
-          <span class="status-time">أضف حالة</span>
-        </div>
-      </div>
-    `;
-
-    // Recent statuses
-    const recentStatuses = this.statuses.filter(s => {
-      const statusTime = new Date(s.createdAt);
-      const now = new Date();
-      return (now - statusTime) < 24 * 60 * 60 * 1000;
-    });
-
-    const statusesHtml = recentStatuses.map(status => `
-      <div class="status-item" onclick="app.viewStatus('${status.id}')">
-        <div class="status-ring">
-          <div class="status-avatar">
-            <img src="${status.userAvatar}" alt="${status.userName}">
-          </div>
-        </div>
-        <div class="status-info">
-          <span class="status-name">${status.userName}</span>
-          <span class="status-time">${this.formatStatusTime(status.createdAt)}</span>
+        <div class="contact-info">
+          <span class="contact-name">${user.username}</span>
+          <span class="contact-status">${user.is_online ? 'متصل الآن' : 'غير متصل'}</span>
         </div>
       </div>
     `).join('');
-
-    container.innerHTML = `
-      <div class="status-section">
-        <h3>المحدثة مؤخراً</h3>
-        <div class="status-list-scroll">
-          ${myStatusHtml}
-          ${statusesHtml}
-        </div>
-      </div>
-    `;
   }
 
-  viewStatus(statusId) {
-    const status = this.statuses.find(s => s.id === statusId);
-    if (!status) return;
+  async startChatWithUser(userId) {
+    const user = this.users.find(u => u.id === userId);
+    if (!user) return;
 
-    const viewer = document.getElementById('story-viewer');
-    const container = document.getElementById('story-container');
-    
-    document.getElementById('story-user-avatar').src = status.userAvatar;
-    document.getElementById('story-user-name').textContent = status.userName;
-    document.getElementById('story-time').textContent = this.formatStatusTime(status.createdAt);
-    
-    const content = status.type === 'image' 
-      ? `<img src="${status.content}" alt="حالة" class="story-image">`
-      : `<video src="${status.content}" controls class="story-video"></video>`;
-    
-    document.getElementById('story-content').innerHTML = content;
-    
-    viewer.classList.remove('hidden');
-    this.startStoryProgress();
-  }
+    let chat = this.chats.find(c => c.id === userId);
+    if (!chat) {
+      chat = {
+        id: userId,
+        type: 'private',
+        name: user.username,
+        avatar: user.avatar || '/avatars/default.png',
+        lastMessage: '',
+        lastMessageTime: new Date().toISOString(),
+        unreadCount: 0,
+        is_online: user.is_online || 0
+      };
+      this.chats.unshift(chat);
+    }
 
-  viewMyStatus() {
-    // Open camera for new status
-    document.getElementById('camera-input').click();
-  }
-
-  startStoryProgress() {
-    const progress = document.getElementById('story-progress');
-    progress.style.width = '0%';
-    
-    setTimeout(() => {
-      progress.style.width = '100%';
-      progress.style.transition = 'width 5s linear';
-    }, 100);
+    this.openChat(chat.id);
+    document.getElementById('new-chat-panel').classList.add('hidden');
+    this.renderChatsList();
   }
 
   // ==================== Calls ====================
 
-  loadCalls() {
-    // Sample calls
-    this.calls = [
-      {
-        id: 'call-1',
-        userId: this.users[0]?.id || 'user-1',
-        userName: this.users[0]?.username || 'أحمد',
-        userAvatar: this.users[0]?.avatar || '/avatars/default.png',
-        type: 'voice',
-        direction: 'outgoing',
-        duration: '05:32',
-        timestamp: new Date(Date.now() - 3600000).toISOString()
-      },
-      {
-        id: 'call-2',
-        userId: this.users[1]?.id || 'user-2',
-        userName: this.users[1]?.username || 'سارة',
-        userAvatar: this.users[1]?.avatar || '/avatars/default.png',
-        type: 'video',
-        direction: 'incoming',
-        duration: '02:15',
-        timestamp: new Date(Date.now() - 86400000).toISOString()
-      }
-    ];
-    this.renderCalls();
-  }
-
-  renderCalls() {
+  renderCallsList(calls) {
     const container = document.getElementById('calls-list');
     
-    if (this.calls.length === 0) {
+    if (calls.length === 0) {
       container.innerHTML = `
         <div class="empty-calls">
-          <div class="empty-icon">
-            <i class="fas fa-phone-slash"></i>
-          </div>
+          <div class="empty-icon"><i class="fas fa-phone-slash"></i></div>
           <h3>لا توجد مكالمات</h3>
           <p>ابدأ مكالمة مع صديق</p>
         </div>
@@ -979,17 +601,17 @@ class ConnectFlowApp {
       return;
     }
 
-    container.innerHTML = this.calls.map(call => `
+    container.innerHTML = calls.map(call => `
       <div class="call-item" data-call-id="${call.id}">
         <div class="call-avatar">
-          <img src="${call.userAvatar}" alt="${call.userName}">
+          <img src="${call.userAvatar || '/avatars/default.png'}" alt="${call.userName}">
         </div>
         <div class="call-info">
           <span class="call-name">${call.userName}</span>
           <span class="call-details">
             <i class="fas fa-arrow-${call.direction === 'outgoing' ? 'up-right' : 'down-left'}"></i>
             ${this.formatCallTime(call.timestamp)}
-            <span class="call-duration">${call.duration}</span>
+            <span class="call-duration">${call.duration || '0:00'}</span>
           </span>
         </div>
         <div class="call-actions">
@@ -1002,104 +624,25 @@ class ConnectFlowApp {
   }
 
   startCall(userId, type) {
-    console.log(`Starting ${type} call with user ${userId}`);
-    // Implement call functionality
-  }
-
-  // ==================== Groups ====================
-
-  createGroup(name, description, participantIds) {
-    const group = {
-      id: 'group-' + Date.now(),
-      name,
-      description,
-      avatar: '/avatars/default.png',
-      participants: [
-        { id: this.currentUser.id, name: this.currentUser.username, isAdmin: true },
-        ...participantIds.map(id => {
-          const user = this.users.find(u => u.id === id);
-          return { id, name: user?.username || 'مستخدم', isAdmin: false };
-        })
-      ],
-      createdAt: new Date().toISOString(),
-      settings: {
-        allowAddMembers: true,
-        allowEditGroupInfo: true,
-        allowSendMessages: true
-      }
-    };
-
-    this.groups.push(group);
-    this.socket.emit('create_group', group);
-    this.renderGroups();
-    this.openGroupChat(group.id);
-  }
-
-  renderGroups() {
-    // Update groups in chats list
-    this.chats = this.chats.filter(c => c.type !== 'group');
-    this.groups.forEach(group => {
-      const existingChat = this.chats.find(c => c.id === group.id);
-      if (!existingChat) {
-        this.chats.unshift({
-          id: group.id,
-          type: 'group',
-          name: group.name,
-          avatar: group.avatar,
-          lastMessage: 'تم إنشاء مجموعة جديدة',
-          lastMessageTime: group.createdAt,
-          unreadCount: 0,
-          isOnline: false,
-          isPinned: false,
-          isArchived: false,
-          isMuted: false,
-          starred: false
-        });
-      }
-    });
-    this.renderChatsList();
-  }
-
-  openGroupChat(groupId) {
-    const group = this.groups.find(g => g.id === groupId);
-    if (!group) return;
-
-    this.selectedChat = {
-      id: group.id,
-      type: 'group',
-      name: group.name,
-      avatar: group.avatar,
-      group: group
-    };
-
-    document.getElementById('chat-window').classList.remove('hidden');
-    this.updateChatHeader(this.selectedChat);
-    this.loadMessages(groupId);
+    console.log(`Starting ${type || 'voice'} call with user ${userId}`);
+    alert('ميزة المكالمات ستكون متاحة قريباً!');
   }
 
   // ==================== File Upload ====================
 
   async uploadFile(file, type) {
     const formData = new FormData();
-    formData.append(type, file);
+    formData.append('file', file);
 
     try {
-      const endpoint = {
-        'avatar': '/api/upload/avatar',
-        'image': '/api/upload/image',
-        'audio': '/api/upload/audio',
-        'document': '/api/upload/document'
-      }[type] || '/api/upload/image';
-
-      const response = await fetch(endpoint, {
+      const response = await fetch(`/api/upload/${type}`, {
         method: 'POST',
         body: formData
       });
 
       const data = await response.json();
-
       if (data.success) {
-        return type === 'avatar' ? data.avatar : data.url;
+        return data.url;
       } else {
         throw new Error(data.error || 'Upload failed');
       }
@@ -1120,13 +663,15 @@ class ConnectFlowApp {
         this.sendMessage(file.name, 'image', url);
       } else if (type === 'audio') {
         this.sendMessage('رسالة صوتية', 'audio', url);
-      } else if (type === 'document') {
-        this.sendMessage(file.name, 'document', url);
+      } else if (type === 'camera') {
+        this.sendMessage('صورة', 'image', url);
       }
     } catch (error) {
       console.error('File upload error:', error);
       alert('فشل في رفع الملف');
     }
+    
+    event.target.value = '';
   }
 
   // ==================== Voice Recording ====================
@@ -1156,12 +701,10 @@ class ConnectFlowApp {
       this.mediaRecorder.start();
       this.isRecording = true;
 
-      // Show recording UI
       document.getElementById('voice-record-panel').classList.remove('hidden');
       document.getElementById('mic-btn').classList.add('hidden');
       document.getElementById('send-btn').classList.remove('hidden');
 
-      // Start timer
       this.recordingTimer = setInterval(() => {
         const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000);
         const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
@@ -1175,7 +718,7 @@ class ConnectFlowApp {
     }
   }
 
-  stopRecording(cancel = false) {
+  stopRecording() {
     if (this.mediaRecorder && this.isRecording) {
       this.mediaRecorder.stop();
       this.isRecording = false;
@@ -1185,45 +728,35 @@ class ConnectFlowApp {
     document.getElementById('voice-record-panel').classList.add('hidden');
     document.getElementById('mic-btn').classList.remove('hidden');
     document.getElementById('send-btn').classList.add('hidden');
-
-    if (cancel) {
-      this.audioChunks = [];
-    }
   }
 
   // ==================== Audio Player ====================
 
   playAudio(button, url) {
-    const audioContainer = button.closest('.audio-message');
+    const audioContainer = button.closest('.audio-message') || button.closest('.message-bubble.audio');
     
-    if (this.activeAudio && this.activeAudio !== audioContainer) {
-      this.activeAudio.querySelector('audio').pause();
-      this.activeAudio.querySelector('.audio-play-btn i').classList.add('fa-play');
-      this.activeAudio.querySelector('.audio-play-btn i').classList.remove('fa-pause');
-    }
-
-    const audio = audioContainer.querySelector('audio');
-    const icon = button.querySelector('i');
-
-    if (audio.paused) {
+    const audio = new Audio(url);
+    
+    if (button.querySelector('i').classList.contains('fa-play')) {
+      button.querySelector('i').classList.remove('fa-play');
+      button.querySelector('i').classList.add('fa-pause');
+      
       audio.play();
-      icon.classList.remove('fa-play');
-      icon.classList.add('fa-pause');
-      this.activeAudio = audioContainer;
+      audio.onended = () => {
+        button.querySelector('i').classList.remove('fa-pause');
+        button.querySelector('i').classList.add('fa-play');
+      };
     } else {
       audio.pause();
-      icon.classList.remove('fa-pause');
-      icon.classList.add('fa-play');
+      button.querySelector('i').classList.remove('fa-pause');
+      button.querySelector('i').classList.add('fa-play');
     }
   }
 
-  // ==================== Reply to Message ====================
+  // ==================== Reply ====================
 
   startReply(messageId) {
-    const chatKey = this.getChatKey(this.selectedChat?.id, this.currentUser.id);
-    const messages = this.messages.get(chatKey) || [];
-    const message = messages.find(m => m.id === messageId);
-    
+    const message = this.messages.find(m => m.id === messageId);
     if (!message) return;
 
     this.replyMessage = message;
@@ -1239,92 +772,7 @@ class ConnectFlowApp {
     document.getElementById('reply-preview').classList.add('hidden');
   }
 
-  // ==================== Forward Message ====================
-
-  showForwardPanel(messageId) {
-    const forwardPanel = document.getElementById('forward-panel');
-    forwardPanel.classList.remove('hidden');
-    
-    // Populate contacts
-    const forwardList = document.getElementById('forward-list');
-    forwardList.innerHTML = this.chats.map(chat => `
-      <div class="forward-item" data-chat-id="${chat.id}" onclick="app.forwardToChat('${chat.id}')">
-        <div class="forward-avatar">
-          <img src="${chat.avatar}" alt="${chat.name}">
-        </div>
-        <div class="forward-info">
-          <span class="forward-name">${chat.name}</span>
-        </div>
-        <div class="forward-checkbox">
-          <i class="far fa-circle"></i>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  async forwardToChat(chatId) {
-    const chat = this.chats.find(c => c.id === chatId);
-    if (!this.forwardMessage || !chat) return;
-
-    this.socket.emit('send_message', {
-      receiverId: chatId,
-      content: this.forwardMessage.content || '',
-      type: this.forwardMessage.type,
-      fileUrl: this.forwardMessage.file_url
-    });
-
-    document.getElementById('forward-panel').classList.add('hidden');
-    this.forwardMessage = null;
-  }
-
-  // ==================== Delete Message ====================
-
-  showDeleteConfirmation(messageId) {
-    const dialog = document.getElementById('confirm-dialog');
-    dialog.classList.remove('hidden');
-    
-    document.getElementById('confirm-title').textContent = 'حذف الرسالة';
-    document.getElementById('confirm-message').textContent = 'هل تريد حذف هذه الرسالة؟';
-    
-    document.getElementById('confirm-ok').onclick = () => {
-      this.deleteMessage(messageId);
-      dialog.classList.add('hidden');
-    };
-    
-    document.getElementById('confirm-cancel').onclick = () => {
-      dialog.classList.add('hidden');
-    };
-  }
-
-  async deleteMessage(messageId, forEveryone = true) {
-    try {
-      await fetch('/api/messages/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId, forEveryone })
-      });
-
-      // Remove from UI
-      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-      if (messageElement) {
-        messageElement.style.opacity = '0';
-        messageElement.style.transform = 'translateX(-20px)';
-        setTimeout(() => messageElement.remove(), 300);
-      }
-
-      // Update in messages map
-      this.messages.forEach((messages, key) => {
-        const index = messages.findIndex(m => m.id === messageId);
-        if (index !== -1) {
-          messages.splice(index, 1);
-        }
-      });
-    } catch (error) {
-      console.error('Error deleting message:', error);
-    }
-  }
-
-  // ==================== Message Context Menu ====================
+  // ==================== Context Menu ====================
 
   showMessageContextMenu(event, messageId) {
     event.stopPropagation();
@@ -1337,7 +785,6 @@ class ConnectFlowApp {
     menu.classList.remove('hidden');
     backdrop.classList.remove('hidden');
 
-    // Bind actions
     document.getElementById('context-reply').onclick = () => {
       this.startReply(messageId);
       this.hideContextMenu();
@@ -1365,21 +812,79 @@ class ConnectFlowApp {
   }
 
   copyMessage(messageId) {
-    const chatKey = this.getChatKey(this.selectedChat?.id, this.currentUser.id);
-    const messages = this.messages.get(chatKey) || [];
-    const message = messages.find(m => m.id === messageId);
-    
-    if (message && message.content) {
+    const message = this.messages.find(m => m.id === messageId);
+    if (message?.content) {
       navigator.clipboard.writeText(message.content);
       this.showToast('تم نسخ النص');
     }
   }
 
-  // ==================== Chat Context Menu ====================
+  // ==================== Delete Confirmation ====================
 
-  showChatContextMenu(event, chatId) {
-    // Implement chat context menu
-    console.log('Chat context menu for:', chatId);
+  showDeleteConfirmation(messageId) {
+    const dialog = document.getElementById('confirm-dialog');
+    dialog.classList.remove('hidden');
+    
+    document.getElementById('confirm-ok').onclick = () => {
+      this.deleteMessage(messageId);
+      dialog.classList.add('hidden');
+    };
+    
+    document.getElementById('confirm-cancel').onclick = () => {
+      dialog.classList.add('hidden');
+    };
+  }
+
+  // ==================== Forward ====================
+
+  showForwardPanel(messageId) {
+    const message = this.messages.find(m => m.id === messageId);
+    if (!message) return;
+    
+    this.forwardMessage = message;
+    const forwardPanel = document.getElementById('forward-panel');
+    forwardPanel.classList.remove('hidden');
+    
+    const forwardList = document.getElementById('forward-list');
+    forwardList.innerHTML = this.chats.map(chat => `
+      <div class="forward-item" data-chat-id="${chat.id}" onclick="app.forwardToChat('${chat.id}')">
+        <div class="forward-avatar">
+          <img src="${chat.avatar}" alt="${chat.name}">
+        </div>
+        <div class="forward-info">
+          <span class="forward-name">${chat.name}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async forwardToChat(chatId) {
+    if (!this.forwardMessage) return;
+
+    this.socket.emit('send_message', {
+      receiverId: chatId,
+      content: this.forwardMessage.content || '',
+      type: this.forwardMessage.type,
+      fileUrl: this.forwardMessage.file_url
+    });
+
+    document.getElementById('forward-panel').classList.add('hidden');
+    this.forwardMessage = null;
+    this.showToast('تم إعادة إرسال الرسالة');
+  }
+
+  // ==================== Media Viewer ====================
+
+  viewImage(url) {
+    const viewer = document.getElementById('media-viewer');
+    const img = document.getElementById('media-image');
+    const video = document.getElementById('media-video');
+    
+    video.classList.add('hidden');
+    img.classList.remove('hidden');
+    img.src = url;
+    
+    viewer.classList.remove('hidden');
   }
 
   // ==================== Panels ====================
@@ -1389,71 +894,47 @@ class ConnectFlowApp {
     this.renderNewChatContacts();
   }
 
-  renderNewChatContacts() {
-    const container = document.getElementById('new-chat-contacts');
-    container.innerHTML = this.users.map(user => `
-      <div class="contact-item" data-user-id="${user.id}" onclick="app.startChatWithUser('${user.id}')">
-        <div class="contact-avatar">
-          <img src="${user.avatar || '/avatars/default.png'}" alt="${user.username}">
-        </div>
-        <div class="contact-info">
-          <span class="contact-name">${user.username}</span>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  startChatWithUser(userId) {
-    const user = this.users.find(u => u.id === userId);
-    if (!user) return;
-
-    let chat = this.chats.find(c => c.id === userId);
-    if (!chat) {
-      chat = {
-        id: userId,
-        type: 'private',
-        name: user.username,
-        avatar: user.avatar || '/avatars/default.png',
-        lastMessage: '',
-        lastMessageTime: new Date().toISOString(),
-        unreadCount: 0,
-        isOnline: user.is_online || false,
-        isPinned: false,
-        isArchived: false,
-        isMuted: false,
-        starred: false
-      };
-      this.chats.unshift(chat);
-    }
-
-    this.openChat(chat.id);
-    document.getElementById('new-chat-panel').classList.add('hidden');
-    this.renderChatsList();
-  }
-
-  showNewGroupPanel() {
-    document.getElementById('new-group-panel').classList.remove('hidden');
-    this.renderGroupParticipants();
-  }
-
-  renderGroupParticipants() {
-    const container = document.getElementById('group-participants');
-    container.innerHTML = '';
-  }
-
   showSettingsPanel() {
     document.getElementById('settings-panel').classList.remove('hidden');
     this.updateSettingsUI();
   }
 
-  showProfilePanel() {
-    document.getElementById('profile-panel').classList.remove('hidden');
-    this.updateProfileUI();
+  showNewGroupPanel() {
+    document.getElementById('new-group-panel').classList.remove('hidden');
+    document.getElementById('new-chat-panel').classList.add('hidden');
   }
 
-  showUserInfoPanel(userId) {
-    document.getElementById('user-info-panel').classList.remove('hidden');
-    this.updateUserInfoUI(userId);
+  async createGroup() {
+    const name = document.getElementById('group-name').value.trim();
+    if (!name) {
+      alert('يرجى إدخال اسم المجموعة');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, participantIds: [] })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        document.getElementById('new-group-panel').classList.add('hidden');
+        this.openChat(data.group.id);
+        this.showToast('تم إنشاء المجموعة');
+      }
+    } catch (error) {
+      console.error('Create group error:', error);
+    }
+  }
+
+  updateSettingsUI() {
+    if (this.currentUser) {
+      document.getElementById('settings-avatar').src = this.currentUser.avatar || '/avatars/default.png';
+      document.getElementById('settings-name').textContent = this.currentUser.username;
+      document.getElementById('dark-mode-toggle').checked = this.darkMode;
+    }
   }
 
   // ==================== View Navigation ====================
@@ -1468,61 +949,6 @@ class ConnectFlowApp {
     document.querySelectorAll('.content-view').forEach(content => {
       content.classList.toggle('active', content.id === `${view}-view`);
     });
-  }
-
-  // ==================== Emojis & Stickers ====================
-
-  loadEmojis() {
-    const emojiCategories = {
-      'recent': ['😀', '😂', '😍', '😊', '👍', '❤️', '😎', '🤔'],
-      'smileys': ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖'],
-      'animals': ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰', '🪲', '🪳', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🦬', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐈‍⬛', '🪶', '🐓', '🦃', '🦤', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔'],
-      'foods': ['🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆', '🌮', '🌯', '🫔', '🥗', '🥘', '🫕', '🥫', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '☕', '🫖', '🍵', '🧃', '🥤', '🫗', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾'],
-      'activities': ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '⛹️', '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄', '🏊', '🤽', '🚣', '🧗', '🚵', '🚴', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️', '🎫', '🎟️', '🎪', '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🧩'],
-      'travel': ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '🪝', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️', '⛺', '🛖', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋', '⛲', '⛺', '🏐'],
-      'objects': ['💌', '💎', '💍', '💄', '👠', '👟', '👞', '👢', '👓', '🕶️', '👑', '🧢', '🎩', '🎓', '🧶', '🧵', '🪡', '🧵', '🪮', '🪭', '🧱', '🪵', '🪑', '🛋️', '🛏️', '🛌', '🧸', '🪆', '🖼️', '🪞', '🪟', '🛍️', '🛒', '🎁', '🎈', '🎏', '🎀', '🪄', '🎊', '🎉', '🎎', '🏮', '🎐', '🧧', '✉️', '📩', '📨', '📧', '💌', '📥', '📤', '📦', '🏷️', '🪧', '📪', '📫', '📬', '📭', '📮', '📯', '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒️', '🗓️', '📆', '📅', '🗑️', '📇', '🗃️', '🗳️', '🗄️', '📋', '📁', '📂', '🗂️', '🗞️', '📰', '📓', '📔', '📒', '📕', '📗', '📘', '📙', '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇️', '📐', '📏', '🧮', '📌', '📍', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️', '📝', '✏️', '🔍', '🔎', '🔏', '🔐', '🔒', '🔓'],
-      'symbols': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚹', '🚺', '🚼', '⚧️', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '🔸', '🔹', '🔶', '🔷', '🔳', '🔲', '▪️', '▫️', '◾', '◽', '◼️', '◻️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔈', '🔇', '🔉', '🔊', '🔔', '🔕', '📣', '📢', '👁️‍🗨️', '💬', '💭', '🗯️', '♠️', '♣️', '♥️', '♦️', '🃏', '🎴', '🀄', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕜', '🕝', '🕞', '🕟', '🕠', '🕡', '🕢', '🕣', '🕤', '🕥', '🕦', '🕧']
-    };
-
-    const emojiPanel = document.getElementById('emoji-panel');
-    
-    emojiPanel.innerHTML = Object.entries(emojiCategories).map(([category, emojis]) => `
-      <div class="emoji-category" data-category="${category}">
-        ${emojis.map(emoji => `
-          <button class="emoji-btn" onclick="app.insertEmoji('${emoji}')">${emoji}</button>
-        `).join('')}
-      </div>
-    `).join('');
-  }
-
-  insertEmoji(emoji) {
-    const input = document.getElementById('message-input');
-    input.value += emoji;
-    this.autoResizeTextarea();
-    input.focus();
-  }
-
-  generateStickers() {
-    const stickers = [];
-    const emojis = ['😀', '😎', '😍', '😂', '🥰', '😇', '🤔', '😴', '🤯', '🥳', '😈', '👻', '🤖', '👽', '🎃', '🦄', '🐱', '🐶', '🦊', '🦁'];
-    
-    emojis.forEach((emoji, index) => {
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
-          <defs>
-            <linearGradient id="grad${index}" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" style="stop-color:#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')};stop-opacity:1" />
-              <stop offset="100%" style="stop-color:#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')};stop-opacity:1" />
-            </linearGradient>
-          </defs>
-          <rect width="100" height="100" rx="20" fill="url(#grad${index})"/>
-          <text x="50" y="65" font-size="50" text-anchor="middle" dominant-baseline="middle">${emoji}</text>
-        </svg>
-      `;
-      stickers.push('data:image/svg+xml,' + encodeURIComponent(svg));
-    });
-
-    this.stickers = stickers;
   }
 
   // ==================== Dark Mode ====================
@@ -1542,30 +968,10 @@ class ConnectFlowApp {
   }
 
   saveSettings() {
-    const settings = {
-      darkMode: this.darkMode
-    };
-    localStorage.setItem('connectflow-settings', JSON.stringify(settings));
-  }
-
-  updateSettingsUI() {
-    document.getElementById('settings-avatar').src = this.currentUser?.avatar || '/avatars/default.png';
-    document.getElementById('settings-name').textContent = this.currentUser?.username || 'المستخدم';
-    document.getElementById('dark-mode-toggle').checked = this.darkMode;
-  }
-
-  updateProfileUI() {
-    document.getElementById('profile-avatar-img').src = this.currentUser?.avatar || '/avatars/default.png';
-    document.getElementById('profile-name').textContent = this.currentUser?.username || 'المستخدم';
-    document.getElementById('profile-phone').textContent = this.currentUser?.phone || '+123 456 7890';
-    document.getElementById('profile-username').textContent = '@' + (this.currentUser?.username || 'user');
+    localStorage.setItem('connectflow-settings', JSON.stringify({ darkMode: this.darkMode }));
   }
 
   // ==================== Utilities ====================
-
-  getChatKey(id1, id2) {
-    return [id1, id2].sort().join('_');
-  }
 
   formatTime(dateString) {
     const date = new Date(dateString);
@@ -1588,38 +994,19 @@ class ConnectFlowApp {
   }
 
   formatChatTime(dateString) {
+    if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     const diff = now - date;
 
-    if (diff < 60000) {
-      return 'الآن';
-    } else if (diff < 3600000) {
-      return Math.floor(diff / 60000) + 'د';
-    } else if (diff < 86400000) {
-      return date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-    } else if (diff < 604800000) {
-      return date.toLocaleDateString('ar-EG', { weekday: 'short' });
-    } else {
-      return date.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
-    }
-  }
-
-  formatStatusTime(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now - date;
-
-    if (diff < 60000) {
-      return 'الآن';
-    } else if (diff < 3600000) {
-      return Math.floor(diff / 60000) + 'د';
-    } else {
-      return Math.floor(diff / 3600000) + 'س';
-    }
+    if (diff < 60000) return 'الآن';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'د';
+    if (diff < 86400000) return date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
   }
 
   formatCallTime(dateString) {
+    if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     const diff = now - date;
@@ -1650,7 +1037,7 @@ class ConnectFlowApp {
   }
 
   scrollToBottom() {
-    const container = document.getElementById('messages-container');
+    const container = document.getElementById('chat-content');
     container.scrollTop = container.scrollHeight;
   }
 
@@ -1661,8 +1048,7 @@ class ConnectFlowApp {
   }
 
   showTypingIndicator() {
-    const indicator = document.getElementById('typing-indicator');
-    indicator.classList.remove('hidden');
+    document.getElementById('typing-indicator').classList.remove('hidden');
     this.scrollToBottom();
   }
 
@@ -1682,19 +1068,31 @@ class ConnectFlowApp {
     }, 2000);
   }
 
-  showMessageNotification(message) {
-    if (Notification.permission === 'granted') {
-      new Notification('رسالة جديدة', {
-        body: message.content || 'وسائط جديدة',
-        icon: '/avatars/default.png'
-      });
-    }
+  playNotificationSound() {
+    try {
+      const audio = new Audio('/sounds/notification.mp3');
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+    } catch (e) {}
   }
 
-  playNotificationSound() {
-    const audio = new Audio('/sounds/notification.mp3');
-    audio.volume = 0.5;
-    audio.play().catch(() => {});
+  updateUserOnlineStatus(userId, isOnline) {
+    const chat = this.chats.find(c => c.id === userId);
+    if (chat) {
+      chat.is_online = isOnline ? 1 : 0;
+      this.renderChatsList();
+    }
+    
+    const user = this.users.find(u => u.id === userId);
+    if (user) {
+      user.is_online = isOnline ? 1 : 0;
+    }
+    
+    if (this.selectedChat?.id === userId) {
+      const statusEl = document.getElementById('chat-status-text');
+      statusEl.textContent = isOnline ? 'متصل الآن' : 'غير متصل';
+      statusEl.className = `status ${isOnline ? 'online' : ''}`;
+    }
   }
 
   // ==================== Event Bindings ====================
@@ -1742,11 +1140,26 @@ class ConnectFlowApp {
       }
     });
 
+    // Password toggle
+    document.querySelectorAll('.toggle-password').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.target);
+        const icon = btn.querySelector('i');
+        if (input.type === 'password') {
+          input.type = 'text';
+          icon.classList.remove('fa-eye');
+          icon.classList.add('fa-eye-slash');
+        } else {
+          input.type = 'password';
+          icon.classList.remove('fa-eye-slash');
+          icon.classList.add('fa-eye');
+        }
+      });
+    });
+
     // Header tabs
     document.querySelectorAll('.header-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        this.switchView(tab.dataset.view);
-      });
+      tab.addEventListener('click', () => this.switchView(tab.dataset.view));
     });
 
     // Dropdown menu
@@ -1758,22 +1171,15 @@ class ConnectFlowApp {
       document.getElementById('dropdown-menu').classList.remove('active');
     });
 
-    // Dropdown actions
-    document.getElementById('dropdown-new-group').addEventListener('click', (e) => {
-      e.preventDefault();
-      this.showNewGroupPanel();
-      document.getElementById('dropdown-menu').classList.remove('active');
-    });
-
     document.getElementById('dropdown-settings').addEventListener('click', (e) => {
       e.preventDefault();
       this.showSettingsPanel();
       document.getElementById('dropdown-menu').classList.remove('active');
     });
 
-    document.getElementById('dropdown-profile').addEventListener('click', (e) => {
+    document.getElementById('dropdown-new-group').addEventListener('click', (e) => {
       e.preventDefault();
-      this.showProfilePanel();
+      this.showNewGroupPanel();
       document.getElementById('dropdown-menu').classList.remove('active');
     });
 
@@ -1783,10 +1189,8 @@ class ConnectFlowApp {
       document.getElementById('dropdown-menu').classList.remove('active');
     });
 
-    // Chat back button
-    document.getElementById('chat-back').addEventListener('click', () => {
-      this.closeChat();
-    });
+    // Chat back
+    document.getElementById('chat-back').addEventListener('click', () => this.closeChat());
 
     // Message input
     const messageInput = document.getElementById('message-input');
@@ -1810,26 +1214,12 @@ class ConnectFlowApp {
       }
     });
 
-    // Send button
-    document.getElementById('send-btn').addEventListener('click', () => {
-      this.sendMessage();
-    });
+    document.getElementById('send-btn').addEventListener('click', () => this.sendMessage());
+    document.getElementById('mic-btn').addEventListener('click', () => this.startRecording());
+    document.getElementById('record-close').addEventListener('click', () => this.stopRecording());
+    document.getElementById('send-voice').addEventListener('click', () => this.stopRecording());
 
-    // Mic button
-    document.getElementById('mic-btn').addEventListener('click', () => {
-      this.startRecording();
-    });
-
-    // Voice record panel
-    document.getElementById('record-close').addEventListener('click', () => {
-      this.stopRecording(true);
-    });
-
-    document.getElementById('send-voice').addEventListener('click', () => {
-      this.stopRecording(false);
-    });
-
-    // Input action buttons
+    // Input actions
     document.getElementById('emoji-btn').addEventListener('click', () => {
       document.getElementById('emoji-panel').classList.toggle('hidden');
       document.getElementById('attach-panel').classList.add('hidden');
@@ -1848,123 +1238,72 @@ class ConnectFlowApp {
     document.querySelectorAll('.attach-option').forEach(option => {
       option.addEventListener('click', () => {
         const type = option.dataset.type;
-        this.handleAttachment(type);
+        const inputMap = {
+          'document': 'document-input',
+          'gallery': 'image-input',
+          'audio': 'audio-input',
+          'camera': 'camera-input',
+          'contact': 'file-input'
+        };
+        if (inputMap[type]) {
+          document.getElementById(inputMap[type]).click();
+        }
         document.getElementById('attach-panel').classList.add('hidden');
       });
     });
 
     // File inputs
-    document.getElementById('image-input').addEventListener('change', (e) => {
-      this.handleFileSelect(e, 'image');
-    });
+    document.getElementById('image-input').addEventListener('change', (e) => this.handleFileSelect(e, 'image'));
+    document.getElementById('audio-input').addEventListener('change', (e) => this.handleFileSelect(e, 'audio'));
+    document.getElementById('camera-input').addEventListener('change', (e) => this.handleFileSelect(e, 'camera'));
+    document.getElementById('document-input').addEventListener('change', (e) => this.handleFileSelect(e, 'document'));
+    document.getElementById('avatar-input').addEventListener('change', (e) => this.handleFileSelect(e, 'avatar'));
 
-    document.getElementById('audio-input').addEventListener('change', (e) => {
-      this.handleFileSelect(e, 'audio');
-    });
+    // FAB
+    document.getElementById('main-fab').addEventListener('click', () => this.showNewChatPanel());
+    document.getElementById('fab-new-chat').addEventListener('click', () => this.showNewChatPanel());
+    document.getElementById('fab-new-group').addEventListener('click', () => this.showNewGroupPanel());
 
-    document.getElementById('document-input').addEventListener('change', (e) => {
-      this.handleFileSelect(e, 'document');
-    });
-
-    document.getElementById('camera-input').addEventListener('change', (e) => {
-      this.handleFileSelect(e, 'image');
-    });
-
-    document.getElementById('avatar-input').addEventListener('change', (e) => {
-      this.handleFileSelect(e, 'avatar');
-    });
-
-    // FAB buttons
-    document.getElementById('main-fab').addEventListener('click', () => {
-      this.showNewChatPanel();
-    });
-
-    document.getElementById('fab-new-chat').addEventListener('click', () => {
-      this.showNewChatPanel();
-    });
-
-    document.getElementById('fab-new-group').addEventListener('click', () => {
-      this.showNewGroupPanel();
-    });
-
-    // New chat panel
+    // Panels close
     document.getElementById('close-new-chat').addEventListener('click', () => {
       document.getElementById('new-chat-panel').classList.add('hidden');
     });
-
-    // New group panel
-    document.getElementById('close-new-group').addEventListener('click', () => {
-      document.getElementById('new-group-panel').classList.add('hidden');
-    });
-
-    document.getElementById('create-new-group').addEventListener('click', () => {
-      this.showNewGroupPanel();
-      document.getElementById('new-chat-panel').classList.add('hidden');
-    });
-
-    document.getElementById('create-group-action').addEventListener('click', () => {
-      const name = document.getElementById('group-name').value;
-      const description = document.getElementById('group-description').value;
-      if (name) {
-        this.createGroup(name, description, []);
-      }
-    });
-
-    // Settings panel
     document.getElementById('close-settings').addEventListener('click', () => {
       document.getElementById('settings-panel').classList.add('hidden');
     });
-
-    document.getElementById('dark-mode-toggle').addEventListener('change', () => {
-      this.toggleDarkMode();
+    document.getElementById('close-new-group').addEventListener('click', () => {
+      document.getElementById('new-group-panel').classList.add('hidden');
     });
-
-    // Profile panel
-    document.getElementById('close-profile').addEventListener('click', () => {
-      document.getElementById('profile-panel').classList.add('hidden');
-    });
-
-    // User info panel
-    document.getElementById('close-user-info').addEventListener('click', () => {
-      document.getElementById('user-info-panel').classList.add('hidden');
-    });
-
-    // Forward panel
     document.getElementById('close-forward').addEventListener('click', () => {
       document.getElementById('forward-panel').classList.add('hidden');
     });
+    document.getElementById('create-new-group-btn').addEventListener('click', () => {
+      this.showNewGroupPanel();
+      document.getElementById('new-chat-panel').classList.add('hidden');
+    });
+    document.getElementById('create-group-action').addEventListener('click', () => this.createGroup());
 
     // Reply preview
-    document.getElementById('reply-preview-close').addEventListener('click', () => {
-      this.hideReplyPreview();
-    });
+    document.getElementById('reply-preview-close').addEventListener('click', () => this.hideReplyPreview());
 
     // Context menu backdrop
-    document.getElementById('context-backdrop').addEventListener('click', () => {
-      this.hideContextMenu();
-    });
+    document.getElementById('context-backdrop').addEventListener('click', () => this.hideContextMenu());
 
     // Confirm dialog
-    document.getElementById('confirm-backdrop')?.addEventListener('click', () => {
+    document.querySelector('.confirm-backdrop')?.addEventListener('click', () => {
       document.getElementById('confirm-dialog').classList.add('hidden');
     });
 
     // Media viewer
     document.getElementById('media-close').addEventListener('click', () => {
       document.getElementById('media-viewer').classList.add('hidden');
-      const video = document.getElementById('media-video');
-      video.pause();
     });
 
-    // Story viewer
-    document.getElementById('story-close').addEventListener('click', () => {
-      document.getElementById('story-viewer').classList.add('hidden');
-    });
+    // Dark mode
+    document.getElementById('dark-mode-toggle').addEventListener('change', () => this.toggleDarkMode());
 
     // Search
-    document.getElementById('chat-search')?.addEventListener('input', (e) => {
-      this.renderChatsList();
-    });
+    document.getElementById('chat-search')?.addEventListener('input', () => this.renderChatsList());
 
     // Click outside to close panels
     document.addEventListener('click', (e) => {
@@ -1982,22 +1321,9 @@ class ConnectFlowApp {
       }
     });
 
-    // Request notification permission
+    // Notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
-    }
-  }
-
-  handleAttachment(type) {
-    const inputMap = {
-      'document': 'document-input',
-      'gallery': 'image-input',
-      'audio': 'audio-input',
-      'camera': 'camera-input'
-    };
-    
-    if (inputMap[type]) {
-      document.getElementById(inputMap[type]).click();
     }
   }
 
@@ -2014,76 +1340,13 @@ class ConnectFlowApp {
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('main-screen').classList.remove('hidden');
     
-    // Update UI with user info
     if (this.currentUser) {
-      document.getElementById('current-username').textContent = this.currentUser.username;
-      document.getElementById('current-avatar').querySelector('img').src = 
-        this.currentUser.avatar || '/avatars/default.png';
+      // Update UI with user info
     }
-  }
-
-  updateUserOnlineStatus(userId, isOnline) {
-    const chat = this.chats.find(c => c.id === userId);
-    if (chat) {
-      chat.isOnline = isOnline;
-      this.renderChatsList();
-    }
-    
-    if (this.selectedChat?.id === userId) {
-      const statusEl = document.getElementById('chat-status-text');
-      statusEl.textContent = isOnline ? 'متصل الآن' : 'غير متصل';
-      statusEl.className = `status ${isOnline ? 'online' : ''}`;
-    }
-  }
-
-  updateMessageStatus(messageId, status) {
-    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (messageElement) {
-      const statusElement = messageElement.querySelector('.message-status');
-      if (statusElement) {
-        statusElement.className = `message-status ${status}`;
-        statusElement.innerHTML = status === 'read' 
-          ? '<i class="fas fa-check-double" style="color: #53bdeb;"></i>'
-          : '<i class="fas fa-check-double"></i>';
-      }
-    }
-  }
-
-  viewImage(url, caption) {
-    const viewer = document.getElementById('media-viewer');
-    const img = document.getElementById('media-image');
-    const video = document.getElementById('media-video');
-    
-    video.classList.add('hidden');
-    img.classList.remove('hidden');
-    img.src = url;
-    document.getElementById('media-title').textContent = caption || 'صورة';
-    
-    viewer.classList.remove('hidden');
-  }
-
-  viewSticker(url) {
-    this.viewImage(url, 'ملصق');
-  }
-
-  openLocation(url, name) {
-    window.open(url, '_blank');
-  }
-
-  downloadFile(url) {
-    window.open(url, '_blank');
-  }
-
-  addReaction(emoji) {
-    console.log('Adding reaction:', emoji);
-  }
-
-  showReactionPicker() {
-    console.log('Showing reaction picker');
   }
 }
 
-// Initialize app when DOM is ready
+// Initialize app
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new ConnectFlowApp();
 });
