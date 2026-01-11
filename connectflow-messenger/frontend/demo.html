@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#00a884">
+  <meta name="description" content="ConnectFlow Messenger - تطبيق مراسلة متكامل">
+  <title>ConnectFlow Messenger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --primary-color: #00a884;
+      --primary-dark: #008069;
+      --background: #efeae2;
+      --white: #fff;
+      --text-primary: #111b21;
+      --text-secondary: #667781;
+      --border-color: #e9edef;
+      --dark-bg: #111b21;
+      --dark-text: #e9edef;
+      --dark-header: #202c33;
+      --dark-hover: #2a3942;
+      --incoming-bg: #fff;
+      --outgoing-bg: #d9fdd3;
+      --message-out: #d9fdd3;
+      --message-in: #fff;
+    }
+    
+    body {
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    
+    /* Splash Screen */
+    .splash-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      animation: fadeOut 0.5s ease 2s forwards;
+    }
+    
+    .splash-content {
+      text-align: center;
+      animation: slideUp 0.6s ease;
+    }
+    
+    .splash-logo svg {
+      animation: pulse 2s ease infinite;
+    }
+    
+    .splash-content h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--primary-color);
+      margin-top: 1rem;
+    }
+    
+    .splash-content p {
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+      margin-top: 0.5rem;
+    }
+    
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    
+    @keyframes fadeOut {
+      to { opacity: 0; visibility: hidden; }
+    }
+    
+    /* Auth Screen */
+    .auth-screen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: var(--background);
+    }
+    
+    .auth-container {
+      background: var(--white);
+      border-radius: 1rem;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      animation: slideUp 0.5s ease;
+    }
+    
+    .auth-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    
+    .auth-logo svg {
+      width: 80px;
+      height: 80px;
+    }
+    
+    .auth-header h2 {
+      font-size: 1.5rem;
+      color: var(--text-primary);
+      margin: 1rem 0 0.5rem;
+    }
+    
+    .auth-header p {
+      color: var(--text-secondary);
+    }
+    
+    .auth-tabs {
+      display: flex;
+      margin-bottom: 1.5rem;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      background: var(--background);
+    }
+    
+    .auth-tab {
+      flex: 1;
+      padding: 0.8rem;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      transition: all 0.3s ease;
+    }
+    
+    .auth-tab.active {
+      background: var(--primary-color);
+      color: var(--white);
+    }
+    
+    .auth-form {
+      display: none;
+    }
+    
+    .auth-form.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    .input-group {
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    
+    .input-group i {
+      position: absolute;
+      right: 1rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+    }
+    
+    .input-group input {
+      width: 100%;
+      padding: 0.9rem 2.5rem 0.9rem 1rem;
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      font-family: inherit;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.3s ease;
+    }
+    
+    .input-group input:focus {
+      border-color: var(--primary-color);
+    }
+    
+    .toggle-password {
+      position: absolute;
+      left: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-secondary);
+      padding: 0.3rem;
+    }
+    
+    .btn-primary {
+      width: 100%;
+      padding: 1rem;
+      background: var(--primary-color);
+      color: var(--white);
+      border: none;
+      border-radius: 0.5rem;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: background 0.3s ease;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+    
+    .auth-error {
+      color: #e74c3c;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+    
+    /* Main Screen */
+    .main-screen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .main-header {
+      background: var(--primary-color);
+      color: var(--white);
+      padding: 0 1rem;
+    }
+    
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 3.5rem;
+    }
+    
+    .header-tabs {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .header-tab {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: inherit;
+      font-size: 0.9rem;
+      border-radius: 0.5rem;
+      transition: all 0.3s ease;
+    }
+    
+    .header-tab.active {
+      background: rgba(255,255,255,0.15);
+      color: var(--white);
+    }
+    
+    .header-menu-btn {
+      background: none;
+      border: none;
+      color: var(--white);
+      padding: 0.5rem;
+      cursor: pointer;
+      font-size: 1.2rem;
+    }
+    
+    /* Demo Info Banner */
+    .demo-banner {
+      background: #fff3cd;
+      color: #856404;
+      padding: 0.75rem 1rem;
+      text-align: center;
+      font-size: 0.85rem;
+      border-bottom: 1px solid #ffeeba;
+    }
+    
+    .demo-banner a {
+      color: #007bff;
+      text-decoration: none;
+      margin-right: 0.5rem;
+    }
+    
+    /* Responsive */
+    @media (max-width: 600px) {
+      .header-tab span {
+        display: none;
+      }
+      
+      .auth-container {
+        padding: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- شاشة البداية -->
+    <div id="splash-screen" class="splash-screen">
+      <div class="splash-content">
+        <div class="splash-logo">
+          <svg viewBox="0 0 90 90" width="120" height="120">
+            <defs>
+              <linearGradient id="greenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#25D366"/>
+                <stop offset="100%" style="stop-color:#128C7E"/>
+              </linearGradient>
+            </defs>
+            <path fill="url(#greenGradient)" d="M90 45c0 24.9-20.1 45-45 45S0 69.9 0 45 20.1 0 45 0s45 20.1 45 45z"/>
+            <path fill="#fff" d="M67.5 28.5c-3.6-.3-7.3-.3-10.9 0l-3.6.9c-1.5.4-3 .9-4.5 1.5-1.3.5-2.5 1.1-3.6 1.9-1 .7-1.9 1.5-2.7 2.4-1.5 1.8-2.4 4.1-2.4 6.7v33.1c0 2.6.9 4.9 2.4 6.7.8.9 1.7 1.7 2.7 2.4 1.1.8 2.3 1.4 3.6 1.9 1.5.6 3 1.1 4.5 1.5l3.6.9c3.6.3 7.3.3 10.9 0l3.6-.9c1.5-.4 3-.9 4.5-1.5 1.3-.5 2.5-1.1 3.6-1.9 1-.7 1.9-1.5 2.7-2.4 1.5-1.8 2.4-4.1 2.4-6.7V40.5c0-2.6-.9-4.9-2.4-6.7-.8-.9-1.7-1.7-2.7-2.4-1.1-.8-2.3-1.4-3.6-1.9-1.5-.6-3-1.1-4.5-1.5l-3.6-.9z"/>
+          </svg>
+        </div>
+        <h1>ConnectFlow</h1>
+        <p>Messenger</p>
+      </div>
+    </div>
+
+    <!-- شاشة المصادقة -->
+    <div id="auth-screen" class="auth-screen">
+      <div class="auth-container">
+        <div class="auth-header">
+          <div class="auth-logo">
+            <svg viewBox="0 0 90 90" width="80" height="80">
+              <defs>
+                <linearGradient id="greenGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#25D366"/>
+                  <stop offset="100%" style="stop-color:#128C7E"/>
+                </linearGradient>
+              </defs>
+              <path fill="url(#greenGradient2)" d="M90 45c0 24.9-20.1 45-45 45S0 69.9 0 45 20.1 0 45 0s45 20.1 45 45z"/>
+            </svg>
+          </div>
+          <h2>مرحباً بك في ConnectFlow</h2>
+          <p>قم بتسجيل الدخول للمتابعة</p>
+        </div>
+
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">تسجيل الدخول</button>
+          <button class="auth-tab" data-tab="register">إنشاء حساب</button>
+        </div>
+
+        <!-- نموذج تسجيل الدخول -->
+        <form id="login-form" class="auth-form active">
+          <div class="input-group">
+            <i class="fas fa-user"></i>
+            <input type="text" id="login-username" placeholder="اسم المستخدم" required>
+          </div>
+          <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="login-password" placeholder="كلمة المرور" required>
+            <button type="button" class="toggle-password" data-target="login-password">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+          <button type="submit" class="btn-primary">
+            <span>تسجيل الدخول</span>
+            <i class="fas fa-sign-in-alt"></i>
+          </button>
+          <p class="auth-error" id="login-error"></p>
+        </form>
+
+        <!-- نموذج إنشاء حساب -->
+        <form id="register-form" class="auth-form">
+          <div class="input-group">
+            <i class="fas fa-user-plus"></i>
+            <input type="text" id="register-username" placeholder="اسم المستخدم (3-20 حرف)" required minlength="3" maxlength="20">
+          </div>
+          <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="register-password" placeholder="كلمة المرور (4 أحرف على الأقل)" required minlength="4">
+            <button type="button" class="toggle-password" data-target="register-password">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+          <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="register-confirm" placeholder="تأكيد كلمة المرور" required>
+            <button type="button" class="toggle-password" data-target="register-confirm">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+          <button type="submit" class="btn-primary">
+            <span>إنشاء حساب</span>
+            <i class="fas fa-user-plus"></i>
+          </button>
+          <p class="auth-error" id="register-error"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- الشاشة الرئيسية (عرض توضيحي فقط) -->
+    <div id="main-screen" class="main-screen hidden">
+      <div class="demo-banner">
+        🎉 هذه نسخة تجريبية من الواجهة! للنشر الكامل، راجع <a href="https://github.com/elias0878/connectflow-messenger" target="_blank">GitHub Repository</a>
+      </div>
+      
+      <!-- الرأس العلوي -->
+      <header class="main-header">
+        <div class="header-content">
+          <div class="header-tabs">
+            <button class="header-tab active" data-view="chats">
+              <i class="fas fa-comment-alt"></i>
+              <span>الدردشات</span>
+            </button>
+            <button class="header-tab" data-view="status">
+              <i class="fas fa-circle-notch"></i>
+              <span>الحالات</span>
+            </button>
+            <button class="header-tab" data-view="calls">
+              <i class="fas fa-phone-alt"></i>
+              <span>المكالمات</span>
+            </button>
+          </div>
+          <button class="header-menu-btn" id="header-menu-btn">
+            <i class="fas fa-ellipsis-v"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- القائمة المنسدلة -->
+      <div class="dropdown-menu" id="dropdown-menu">
+        <div class="dropdown-backdrop" id="dropdown-backdrop"></div>
+        <div class="dropdown-content">
+          <div class="dropdown-item" id="dropdown-new-group">
+            <i class="fas fa-users"></i>
+            <span>مجموعة جديدة</span>
+          </div>
+          <div class="dropdown-item" id="dropdown-settings">
+            <i class="fas fa-cog"></i>
+            <span>الإعدادات</span>
+          </div>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-item" id="dropdown-logout">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>تسجيل الخروج</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- المحتوى الرئيسي -->
+      <main class="main-content">
+        <!-- عرض الدردشات -->
+        <div class="content-view active" id="chats-view">
+          <div class="search-bar">
+            <div class="search-input-container">
+              <button class="search-back-btn">
+                <i class="fas fa-arrow-right"></i>
+              </button>
+              <i class="fas fa-search"></i>
+              <input type="text" id="chat-search" placeholder="بحث...">
+              <button class="search-clear-btn">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="chats-list" id="chats-list">
+            <!-- دردشة تجريبية -->
+            <div class="chat-item">
+              <div class="chat-avatar">
+                <div class="avatar-placeholder">
+                  <i class="fas fa-user"></i>
+                </div>
+              </div>
+              <div class="chat-info">
+                <div class="chat-header-info">
+                  <span class="chat-name">مستخدم تجريبي</span>
+                  <span class="chat-time">12:30 م</span>
+                </div>
+                <div class="chat-last-message">
+                  <span class="message-preview">مرحباً! هذه نسخة تجريبية من التطبيق</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- زر الإضافة العائم -->
+          <div class="fab-container">
+            <button class="fab main-fab" id="main-fab">
+              <i class="fas fa-plus"></i>
+            </button>
+            <div class="fab-options">
+              <button class="fab-option" id="fab-new-chat" title="محادثة جديدة">
+                <i class="fas fa-comment-medical"></i>
+              </button>
+              <button class="fab-option" id="fab-new-group" title="مجموعة جديدة">
+                <i class="fas fa-users"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- عرض الحالات -->
+        <div class="content-view" id="status-view">
+          <div class="status-list">
+            <div class="status-item">
+              <div class="status-avatar">
+                <div class="avatar-placeholder add-status">
+                  <i class="fas fa-plus"></i>
+                </div>
+              </div>
+              <div class="status-info">
+                <span class="status-name">حالتي</span>
+                <span class="status-time">أضف حالة</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- عرض المكالمات -->
+        <div class="content-view" id="calls-view">
+          <div class="calls-list">
+            <div class="call-item">
+              <div class="call-avatar">
+                <div class="avatar-placeholder">
+                  <i class="fas fa-user"></i>
+                </div>
+              </div>
+              <div class="call-info">
+                <span class="call-name">مكالمة تجريبية</span>
+                <span class="call-status">
+                  <i class="fas fa-arrow-down-long"></i> 12:30 م
+                </span>
+              </div>
+              <div class="call-actions">
+                <button class="call-action-btn">
+                  <i class="fas fa-phone-alt"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // عناصر DOM
+    const splashScreen = document.getElementById('splash-screen');
+    const authScreen = document.getElementById('auth-screen');
+    const mainScreen = document.getElementById('main-screen');
+    const authTabs = document.querySelectorAll('.auth-tab');
+    const authForms = document.querySelectorAll('.auth-form');
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const togglePasswordBtns = document.querySelectorAll('.toggle-password');
+    const headerTabs = document.querySelectorAll('.header-tab');
+    const contentViews = document.querySelectorAll('.content-view');
+    const dropdownMenu = document.getElementById('dropdown-menu');
+    const dropdownBackdrop = document.getElementById('dropdown-backdrop');
+    const headerMenuBtn = document.getElementById('header-menu-btn');
+    const mainFab = document.getElementById('main-fab');
+    const fabOptions = document.querySelectorAll('.fab-option');
+
+    // إخفاء شاشة البداية بعد ثانيتين
+    setTimeout(() => {
+      splashScreen.style.display = 'none';
+    }, 2000);
+
+    // تبديل بين التبويبات
+    authTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        
+        authTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        authForms.forEach(form => {
+          form.classList.remove('active');
+          if (form.id === `${tabName}-form`) {
+            form.classList.add('active');
+          }
+        });
+      });
+    });
+
+    // إظهار/إخفاء كلمة المرور
+    togglePasswordBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.dataset.target;
+        const input = document.getElementById(targetId);
+        const icon = btn.querySelector('i');
+        
+        if (input.type === 'password') {
+          input.type = 'text';
+          icon.classList.remove('fa-eye');
+          icon.classList.add('fa-eye-slash');
+        } else {
+          input.type = 'password';
+          icon.classList.remove('fa-eye-slash');
+          icon.classList.add('fa-eye');
+        }
+      });
+    });
+
+    // محاكاة تسجيل الدخول
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value;
+      const password = document.getElementById('login-password').value;
+      
+      if (username && password.length >= 4) {
+        // محاكاة نجاح登录
+        authScreen.classList.add('hidden');
+        mainScreen.classList.remove('hidden');
+      }
+    });
+
+    // محاكاة إنشاء حساب
+    registerForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.getElementById('register-username').value;
+      const password = document.getElementById('register-password').value;
+      const confirm = document.getElementById('register-confirm').value;
+      const errorEl = document.getElementById('register-error');
+      
+      if (password !== confirm) {
+        errorEl.textContent = 'كلمتا المرور غير متطابقتين';
+        return;
+      }
+      
+      if (username && password.length >= 4) {
+        // محاكاة نجاح注册
+        authScreen.classList.add('hidden');
+        mainScreen.classList.remove('hidden');
+      }
+    });
+
+    // تبديل التبويبات في الشاشة الرئيسية
+    headerTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const viewName = tab.dataset.view;
+        
+        headerTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        contentViews.forEach(view => {
+          view.classList.remove('active');
+          if (view.id === `${viewName}-view`) {
+            view.classList.add('active');
+          }
+        });
+      });
+    });
+
+    // القائمة المنسدلة
+    headerMenuBtn.addEventListener('click', () => {
+      dropdownMenu.classList.add('active');
+    });
+
+    dropdownBackdrop.addEventListener('click', () => {
+      dropdownMenu.classList.remove('active');
+    });
+
+    // تسجيل الخروج
+    document.getElementById('dropdown-logout').addEventListener('click', () => {
+      dropdownMenu.classList.remove('active');
+      mainScreen.classList.add('hidden');
+      authScreen.classList.remove('hidden');
+    });
+
+    // زر الإضافة العائم
+    mainFab.addEventListener('click', () => {
+      mainFab.classList.toggle('active');
+      document.querySelector('.fab-options').classList.toggle('active');
+    });
+
+    // إغلاق قائمة FAB عند النقر خارجها
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.fab-container')) {
+        mainFab.classList.remove('active');
+        document.querySelector('.fab-options').classList.remove('active');
+      }
+    });
+
+    console.log('✓ ConnectFlow Messenger - تم تحميل الواجهة بنجاح');
+  </script>
+</body>
+</html>
