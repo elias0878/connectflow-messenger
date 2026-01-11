@@ -4,29 +4,23 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  repository_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy to Railway
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Railway CLI
+        run: |
+          npm install -g @railway/cli
       
       - name: Deploy to Railway
-        uses: amondnet/railway-deployment@v25
-        with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
-          railway_service: ${{ secrets.RAILWAY_SERVICE }}
-          environment: production
-          args: up
-          
-      - name: Get Service URL
-        id: service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          echo "DEPLOY_URL=${{ secrets.RAILWAY_SERVICE }}.up.railway.app" >> $GITHUB_OUTPUT
-          
-      - name: Show Deployment URL
-        run: |
-          echo "🎉 Application deployed successfully!"
-          echo "URL: https://${{ steps.service.outputs.DEPLOY_URL }}"
+          railway link || railway init -n connectflow-messenger || true
+          railway up --detach || railway up
+          echo "🎉 Deployment completed!"
+          echo "📱 Check your Railway dashboard: https://railway.app/dashboard"
