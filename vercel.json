@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "connectflow-messenger/server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "connectflow-messenger/server.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

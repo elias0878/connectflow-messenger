@@ -1,12 +1,15 @@
 services:
   - type: web
     name: connectflow-messenger
-    env: node
-    nodeVersion: 20
-    buildCommand: npm install && npm rebuild better-sqlite3
-    startCommand: npm start
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: cd connectflow-messenger && npm install
+    startCommand: cd connectflow-messenger && npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: PORT
+        value: 10000
