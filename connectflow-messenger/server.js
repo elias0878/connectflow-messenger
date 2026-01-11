@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const Database = require('better-sqlite3');
+const Datastore = require('nedb-promises');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
@@ -19,46 +19,28 @@ const JWT_SECRET = process.env.JWT_SECRET || 'connectflow-secret-key-change-in-p
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 
-// تهيئة قاعدة البيانات
-const db = new Database('connectflow.db');
-
-// إنشاء الجداول
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    avatar TEXT DEFAULT NULL,
-    is_online INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sender_id INTEGER NOT NULL,
-    receiver_id INTEGER NOT NULL,
-    content TEXT DEFAULT '',
-    type TEXT DEFAULT 'text',
-    file_url TEXT DEFAULT NULL,
-    is_read INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (sender_id) REFERENCES users(id),
-    FOREIGN KEY (receiver_id) REFERENCES users(id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
-  CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
-  CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
-`);
-
 // إنشاء المجلدات اللازمة
-const dirs = ['public/uploads', 'public/avatars', 'public/css', 'public/js'];
-dirs.forEach(dir => {
+const dataDir = path.join(__dirname, 'data');
+const uploadDirs = ['public/uploads', 'public/avatars', dataDir];
+
+uploadDirs.forEach(dir => {
   const fullPath = path.join(__dirname, dir);
   if (!fs.existsSync(fullPath)) {
     fs.mkdirSync(fullPath, { recursive: true });
   }
 });
+
+// تهيئة NeDB (بديل SQLite بدون native modules)
+const db = {
+  users: Datastore.create({ filename: path.join(dataDir, 'users.db'), autoload: true }),
+  messages: Datastore.create({ filename: path.join(dataDir, 'messages.db'), autoload: true })
+};
+
+// إنشاء الفهارس
+db.users.ensureIndex({ fieldName: 'username', unique: true });
+db.messages.ensureIndex({ fieldName: 'sender_id' });
+db.messages.ensureIndex({ fieldName: 'receiver_id' });
+db.messages.ensureIndex({ fieldName: 'created_at' });
 
 // إعدادات multer لرفع الملفات
 const storage = multer.diskStorage({
@@ -139,7 +121,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
     
     // التحقق من وجود المستخدم
-    const existingUser = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    const existingUser = await db.users.findOne({ username });
     if (existingUser) {
       return res.json({ success: false, error: 'اسم المستخدم موجود بالفعل' });
     }
@@ -148,11 +130,16 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     // إنشاء المستخدم
-    const result = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run(username, hashedPassword);
-    const userId = result.lastInsertRowid;
+    const user = await db.users.insert({
+      username,
+      password: hashedPassword,
+      avatar: null,
+      is_online: 0,
+      created_at: new Date().toISOString()
+    });
     
     // إنشاء توكن
-    const token = jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id, username }, JWT_SECRET, { expiresIn: '7d' });
     
     // تعيين cookie
     res.cookie('token', token, {
@@ -161,9 +148,7 @@ app.post('/api/auth/register', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
     
-    const user = db.prepare('SELECT id, username, avatar FROM users WHERE id = ?').get(userId);
-    
-    res.json({ success: true, user });
+    res.json({ success: true, user: { id: user._id, username: user.username, avatar: user.avatar } });
   } catch (error) {
     console.error('Registration error:', error);
     res.json({ success: false, error: 'حدث خطأ أثناء التسجيل' });
@@ -180,7 +165,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     // البحث عن المستخدم
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const user = await db.users.findOne({ username });
     if (!user) {
       return res.json({ success: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
     }
@@ -192,7 +177,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     // إنشاء توكن
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     
     // تعيين cookie
     res.cookie('token', token, {
@@ -203,7 +188,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     res.json({
       success: true,
-      user: { id: user.id, username: user.username, avatar: user.avatar }
+      user: { id: user._id, username: user.username, avatar: user.avatar }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -212,13 +197,13 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // جلب المستخدم الحالي
-app.get('/api/auth/me', verifyToken, (req, res) => {
+app.get('/api/auth/me', verifyToken, async (req, res) => {
   try {
-    const user = db.prepare('SELECT id, username, avatar, is_online FROM users WHERE id = ?').get(req.userId);
+    const user = await db.users.findOne({ _id: req.userId });
     if (!user) {
       return res.status(404).json({ error: 'المستخدم غير موجود' });
     }
-    res.json({ user });
+    res.json({ user: { id: user._id, username: user.username, avatar: user.avatar, is_online: user.is_online } });
   } catch (error) {
     console.error('Auth check error:', error);
     res.status(500).json({ error: 'حدث خطأ' });
@@ -232,16 +217,24 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 // جلب جميع المستخدمين
-app.get('/api/users', verifyToken, (req, res) => {
+app.get('/api/users', verifyToken, async (req, res) => {
   try {
-    const users = db.prepare(`
-      SELECT id, username, avatar, is_online, created_at
-      FROM users
-      WHERE id != ?
-      ORDER BY is_online DESC, username ASC
-    `).all(req.userId);
+    const users = await db.users.find({ _id: { $ne: req.userId } });
+    const formattedUsers = users.map(user => ({
+      id: user._id,
+      username: user.username,
+      avatar: user.avatar,
+      is_online: user.is_online,
+      created_at: user.created_at
+    }));
     
-    res.json({ users });
+    // ترتيب: المتصلون أولاً
+    formattedUsers.sort((a, b) => {
+      if (a.is_online === b.is_online) return a.username.localeCompare(b.username);
+      return b.is_online - a.is_online;
+    });
+    
+    res.json({ users: formattedUsers });
   } catch (error) {
     console.error('Get users error:', error);
     res.status(500).json({ error: 'حدث خطأ' });
@@ -249,24 +242,23 @@ app.get('/api/users', verifyToken, (req, res) => {
 });
 
 // جلب الرسائل بين مستخدمين
-app.get('/api/messages/:userId', verifyToken, (req, res) => {
+app.get('/api/messages/:userId', verifyToken, async (req, res) => {
   try {
-    const otherUserId = parseInt(req.params.userId);
+    const otherUserId = req.params.userId;
     
-    const messages = db.prepare(`
-      SELECT m.*, u.username as sender_username
-      FROM messages m
-      JOIN users u ON m.sender_id = u.id
-      WHERE (m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?)
-      ORDER BY m.created_at ASC
-    `).all(req.userId, otherUserId, otherUserId, req.userId);
+    const messages = await db.messages.find({
+      $or: [
+        { sender_id: req.userId, receiver_id: otherUserId },
+        { sender_id: otherUserId, receiver_id: req.userId }
+      ]
+    }).sort({ created_at: 1 });
     
     // تحديث الرسائل المقروءة
-    db.prepare(`
-      UPDATE messages
-      SET is_read = 1
-      WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
-    `).run(otherUserId, req.userId);
+    await db.messages.update(
+      { sender_id: otherUserId, receiver_id: req.userId, is_read: 0 },
+      { $set: { is_read: 1 } },
+      { multi: true }
+    );
     
     res.json({ messages });
   } catch (error) {
@@ -306,7 +298,7 @@ app.post('/api/upload/audio', verifyToken, upload.single('audio'), (req, res) =>
 });
 
 // رفع الصور الشخصية
-app.post('/api/upload/avatar', verifyToken, upload.single('avatar'), (req, res) => {
+app.post('/api/upload/avatar', verifyToken, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) {
       return res.json({ success: false, error: 'يرجى اختيار صورة' });
@@ -315,7 +307,7 @@ app.post('/api/upload/avatar', verifyToken, upload.single('avatar'), (req, res) 
     const url = `/avatars/${req.file.filename}`;
     
     // تحديث صورة المستخدم
-    db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(url, req.userId);
+    await db.users.update({ _id: req.userId }, { $set: { avatar: url } });
     
     res.json({ success: true, avatar: url });
   } catch (error) {
@@ -331,14 +323,14 @@ const connectedUsers = new Map();
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
-  socket.on('authenticate', (token) => {
+  socket.on('authenticate', async (token) => {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       socket.userId = decoded.userId;
       socket.join(`user_${decoded.userId}`);
       
       // تحديث حالة الاتصال
-      db.prepare('UPDATE users SET is_online = 1 WHERE id = ?').run(decoded.userId);
+      await db.users.update({ _id: decoded.userId }, { $set: { is_online: 1 } });
       connectedUsers.set(decoded.userId, socket.id);
       
       // إشعار المستخدمين الآخرين
@@ -351,35 +343,40 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('send_message', (data) => {
+  socket.on('send_message', async (data) => {
     if (!socket.userId) return;
     
     const { receiverId, content, type, fileUrl } = data;
     
     try {
       // حفظ الرسالة في قاعدة البيانات
-      const result = db.prepare(`
-        INSERT INTO messages (sender_id, receiver_id, content, type, file_url)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(socket.userId, receiverId, content || '', type, fileUrl || null);
+      const message = await db.messages.insert({
+        sender_id: socket.userId,
+        receiver_id: receiverId,
+        content: content || '',
+        type,
+        file_url: fileUrl || null,
+        is_read: 0,
+        created_at: new Date().toISOString()
+      });
       
-      const message = {
-        id: result.lastInsertRowid,
+      const messageData = {
+        id: message._id,
         sender_id: socket.userId,
         receiver_id: receiverId,
         content,
         type,
         file_url: fileUrl,
-        created_at: new Date().toISOString()
+        created_at: message.created_at
       };
       
       // إرسال الرسالة للمرسل
-      socket.emit('message_sent', message);
+      socket.emit('message_sent', messageData);
       
       // إرسال للمستقبل إذا كان متصلاً
       const receiverSocket = connectedUsers.get(receiverId);
       if (receiverSocket) {
-        io.to(`user_${receiverId}`).emit('receive_message', message);
+        io.to(`user_${receiverId}`).emit('receive_message', messageData);
       }
     } catch (error) {
       console.error('Send message error:', error);
@@ -406,10 +403,10 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     if (socket.userId) {
       // تحديث حالة الاتصال
-      db.prepare('UPDATE users SET is_online = 0 WHERE id = ?').run(socket.userId);
+      await db.users.update({ _id: socket.userId }, { $set: { is_online: 0 } });
       connectedUsers.delete(socket.userId);
       
       // إشعار المستخدمين الآخرين
@@ -425,4 +422,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`ConnectFlow Messenger running on port ${PORT}`);
   console.log(`Environment: ${NODE_ENV}`);
+  console.log(`Database: NeDB (JavaScript-based, no native modules)`);
 });
