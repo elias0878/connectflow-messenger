@@ -1,0 +1,6 @@
+{"username":"demo1","password":"$2a$10$0DAM5oKvs029/9WzQvFJlOdOiGLQImGK44TjP0LCUd8BGg/FiXP82","avatar":null,"bio":"مستخدم تجريبي 1","phone":"","is_online":0,"created_at":"2026-01-11T19:17:17.269Z","_id":"HiOtr8krkQbcaQNM"}
+{"username":"demo3","password":"$2a$10$gvPoMVeKx0jeSjxexJUXFu1D34kaw0X0SDSM.lAVw7PEtBF51Pqpm","avatar":null,"bio":"مستخدم تجريبي 3","phone":"","is_online":0,"created_at":"2026-01-11T19:17:17.432Z","_id":"Vi1bvyWv5Pqhsx5r"}
+{"username":"ahmed","password":"$2a$10$SRVifET/OHLW6XF34C8rReF23NHgB51jLPWYfvk9aQfQ0O23a7v.2","avatar":null,"bio":"أحمد - مدير المشروع","phone":"","is_online":0,"created_at":"2026-01-11T19:17:17.514Z","_id":"aW7ZbAQV7JVj4Th6"}
+{"username":"sara","password":"$2a$10$ITL85qoLFER4kzyyx7vnkeZtpgVGyhYu8NJeadDw/uGHwhVc/I9sm","avatar":null,"bio":"سارة - مساعدة","phone":"","is_online":0,"created_at":"2026-01-11T19:17:17.594Z","_id":"azSQzRY67tG1R76T"}
+{"username":"demo2","password":"$2a$10$NtK/l.P3bBwxbmhD7yPiRugBYvYtHznktpXJ6jS40ge0aGFoZhLCq","avatar":null,"bio":"مستخدم تجريبي 2","phone":"","is_online":0,"created_at":"2026-01-11T19:17:17.350Z","_id":"dBzK4xKm46jX85Ts"}
+{"$$indexCreated":{"fieldName":"username","unique":true,"sparse":false}}

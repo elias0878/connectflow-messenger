@@ -14,7 +14,7 @@
 </head>
 <body>
   <div id="app">
-    <!-- Splash Screen -->
+    <!-- شاشة البداية -->
     <div id="splash-screen" class="splash-screen">
       <div class="splash-content">
         <div class="splash-logo">
@@ -27,9 +27,6 @@
             </defs>
             <path fill="url(#greenGradient)" d="M90 45c0 24.9-20.1 45-45 45S0 69.9 0 45 20.1 0 45 0s45 20.1 45 45z"/>
             <path fill="#fff" d="M67.5 28.5c-3.6-.3-7.3-.3-10.9 0l-3.6.9c-1.5.4-3 .9-4.5 1.5-1.3.5-2.5 1.1-3.6 1.9-1 .7-1.9 1.5-2.7 2.4-1.5 1.8-2.4 4.1-2.4 6.7v33.1c0 2.6.9 4.9 2.4 6.7.8.9 1.7 1.7 2.7 2.4 1.1.8 2.3 1.4 3.6 1.9 1.5.6 3 1.1 4.5 1.5l3.6.9c3.6.3 7.3.3 10.9 0l3.6-.9c1.5-.4 3-.9 4.5-1.5 1.3-.5 2.5-1.1 3.6-1.9 1-.7 1.9-1.5 2.7-2.4 1.5-1.8 2.4-4.1 2.4-6.7V40.5c0-2.6-.9-4.9-2.4-6.7-.8-.9-1.7-1.7-2.7-2.4-1.1-.8-2.3-1.4-3.6-1.9-1.5-.6-3-1.1-4.5-1.5l-3.6-.9z"/>
-            <path fill="#fff" d="M45.6 68.7c-2.4 0-4.7-.7-6.6-2.1l-4.7-3.4c-2-1.5-3.3-3.5-3.8-5.9l-.6-3c-.6-3.2.4-6.4 2.8-8.8l5.2-5.3c1.2-1.2 2.6-2 4.2-2.5 1.6-.5 3.3-.5 4.9 0 1.6.5 3 1.4 4.2 2.5l5.2 5.3c2.4 2.4 3.4 5.6 2.8 8.8l-.6 3c-.5 2.4-1.8 4.4-3.8 5.9l-4.7 3.4c-1.9 1.4-4.2 2.1-6.6 2.1z"/>
-            <circle fill="#fff" cx="36" cy="36" r="3"/>
-            <circle fill="#fff" cx="54" cy="36" r="3"/>
           </svg>
         </div>
         <h1>ConnectFlow</h1>
@@ -37,7 +34,7 @@
       </div>
     </div>
 
-    <!-- Auth Screen -->
+    <!-- شاشة المصادقة -->
     <div id="auth-screen" class="auth-screen hidden">
       <div class="auth-container">
         <div class="auth-header">
@@ -61,7 +58,7 @@
           <button class="auth-tab" data-tab="register">إنشاء حساب</button>
         </div>
 
-        <!-- Login Form -->
+        <!-- نموذج تسجيل الدخول -->
         <form id="login-form" class="auth-form active">
           <div class="input-group">
             <i class="fas fa-user"></i>
@@ -81,7 +78,7 @@
           <p class="auth-error" id="login-error"></p>
         </form>
 
-        <!-- Register Form -->
+        <!-- نموذج إنشاء حساب -->
         <form id="register-form" class="auth-form">
           <div class="input-group">
             <i class="fas fa-user-plus"></i>
@@ -107,16 +104,12 @@
           </button>
           <p class="auth-error" id="register-error"></p>
         </form>
-
-        <div class="auth-footer">
-          <p>بالضغط على إنشاء حساب، فإنك توافق على <a href="#">شروط الاستخدام</a> و <a href="#">سياسة الخصوصية</a></p>
-        </div>
       </div>
     </div>
 
-    <!-- Main Screen -->
+    <!-- الشاشة الرئيسية -->
     <div id="main-screen" class="main-screen hidden">
-      <!-- Header -->
+      <!-- الرأس العلوي -->
       <header class="main-header">
         <div class="header-content">
           <div class="header-tabs">
@@ -139,17 +132,13 @@
         </div>
       </header>
 
-      <!-- Dropdown Menu -->
+      <!-- القائمة المنسدلة -->
       <div class="dropdown-menu" id="dropdown-menu">
         <div class="dropdown-backdrop" id="dropdown-backdrop"></div>
         <div class="dropdown-content">
           <div class="dropdown-item" id="dropdown-new-group">
             <i class="fas fa-users"></i>
             <span>مجموعة جديدة</span>
-          </div>
-          <div class="dropdown-item" id="dropdown-starred">
-            <i class="fas fa-star"></i>
-            <span>الرسائل المميزة</span>
           </div>
           <div class="dropdown-item" id="dropdown-settings">
             <i class="fas fa-cog"></i>
@@ -163,9 +152,9 @@
         </div>
       </div>
 
-      <!-- Main Content -->
+      <!-- المحتوى الرئيسي -->
       <main class="main-content">
-        <!-- Chats View -->
+        <!-- عرض الدردشات -->
         <div class="content-view active" id="chats-view">
           <div class="search-bar">
             <div class="search-input-container">
@@ -181,10 +170,10 @@
           </div>
 
           <div class="chats-list" id="chats-list">
-            <!-- Chats will be loaded here -->
+            <!-- الدردشات تظهر هنا -->
           </div>
 
-          <!-- FAB -->
+          <!-- زر الإضافة العائم -->
           <div class="fab-container">
             <button class="fab main-fab" id="main-fab">
               <i class="fas fa-plus"></i>
@@ -200,22 +189,22 @@
           </div>
         </div>
 
-        <!-- Status View -->
+        <!-- عرض الحالات -->
         <div class="content-view" id="status-view">
           <div class="status-list" id="status-list">
-            <!-- Status will be loaded here -->
+            <!-- الحالات تظهر هنا -->
           </div>
         </div>
 
-        <!-- Calls View -->
+        <!-- عرض المكالمات -->
         <div class="content-view" id="calls-view">
           <div class="calls-list" id="calls-list">
-            <!-- Calls will be loaded here -->
+            <!-- المكالمات تظهر هنا -->
           </div>
         </div>
       </main>
 
-      <!-- New Chat Panel -->
+      <!-- لوحة محادثة جديدة -->
       <div class="new-chat-panel hidden" id="new-chat-panel">
         <div class="panel-header">
           <button class="panel-close" id="close-new-chat">
@@ -237,20 +226,20 @@
           <div class="contacts-section">
             <h4>جهات الاتصال</h4>
             <div class="contacts-list" id="new-chat-contacts">
-              <!-- Contacts will be loaded here -->
+              <!-- جهات الاتصال تظهر هنا -->
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Chat Window -->
+      <!-- نافذة الدردشة -->
       <div class="chat-window hidden" id="chat-window">
         <div class="chat-header">
           <button class="chat-back-btn" id="chat-back">
             <i class="fas fa-arrow-right"></i>
           </button>
           <div class="chat-user-info" id="chat-user-info">
-            <!-- User info will be loaded here -->
+            <!-- معلومات المستخدم تظهر هنا -->
           </div>
           <div class="chat-actions">
             <button class="chat-action-btn" id="chat-video-call" title="مكالمة فيديو">
@@ -266,7 +255,7 @@
         </div>
 
         <div class="chat-content" id="chat-content">
-          <!-- Messages will be loaded here -->
+          <!-- الرسائل تظهر هنا -->
         </div>
 
         <div class="typing-indicator hidden" id="typing-indicator">
@@ -316,10 +305,10 @@
           </div>
         </div>
 
-        <!-- Emoji Panel -->
+        <!-- لوحة الرموز التعبيرية -->
         <div class="emoji-panel hidden" id="emoji-panel"></div>
 
-        <!-- Attachment Panel -->
+        <!-- لوحة المرفقات -->
         <div class="attach-panel hidden" id="attach-panel">
           <div class="attach-options">
             <button class="attach-option" data-type="document">
@@ -346,22 +335,10 @@
               </div>
               <span>ملف صوتي</span>
             </button>
-            <button class="attach-option" data-type="location">
-              <div class="attach-icon">
-                <i class="fas fa-map-marker-alt"></i>
-              </div>
-              <span>الموقع</span>
-            </button>
-            <button class="attach-option" data-type="contact">
-              <div class="attach-icon">
-                <i class="fas fa-address-card"></i>
-              </div>
-              <span>جهة اتصال</span>
-            </button>
           </div>
         </div>
 
-        <!-- Voice Recording Panel -->
+        <!-- لوحة تسجيل الصوت -->
         <div class="voice-record-panel hidden" id="voice-record-panel">
           <div class="record-timer">
             <i class="fas fa-microphone"></i>
@@ -385,7 +362,7 @@
         </div>
       </div>
 
-      <!-- Settings Panel -->
+      <!-- لوحة الإعدادات -->
       <div class="settings-panel hidden" id="settings-panel">
         <div class="panel-header">
           <button class="panel-close" id="close-settings">
@@ -408,13 +385,6 @@
           </div>
           <div class="settings-section">
             <div class="settings-item">
-              <i class="fas fa-bell"></i>
-              <div class="settings-item-content">
-                <span>الإشعارات والرسائل</span>
-              </div>
-              <i class="fas fa-chevron-left settings-arrow"></i>
-            </div>
-            <div class="settings-item">
               <i class="fas fa-moon"></i>
               <div class="settings-item-content">
                 <span>الوضع الداكن</span>
@@ -424,26 +394,11 @@
                 <span class="slider"></span>
               </label>
             </div>
-            <div class="settings-item">
+            <div class="settings-item" id="privacy-settings">
               <i class="fas fa-lock"></i>
               <div class="settings-item-content">
                 <span>الخصوصية</span>
               </div>
-              <i class="fas fa-chevron-left settings-arrow"></i>
-            </div>
-            <div class="settings-item">
-              <i class="fas fa-sync"></i>
-              <div class="settings-item-content">
-                <span>النسخ الاحتياطي</span>
-              </div>
-              <i class="fas fa-chevron-left settings-arrow"></i>
-            </div>
-            <div class="settings-item">
-              <i class="fas fa-language"></i>
-              <div class="settings-item-content">
-                <span>اللغة</span>
-              </div>
-              <span class="settings-value">العربية</span>
               <i class="fas fa-chevron-left settings-arrow"></i>
             </div>
             <div class="settings-item">
@@ -457,7 +412,7 @@
         </div>
       </div>
 
-      <!-- New Group Panel -->
+      <!-- لوحة إنشاء مجموعة -->
       <div class="new-group-panel hidden" id="new-group-panel">
         <div class="panel-header">
           <button class="panel-close" id="close-new-group">
@@ -471,9 +426,6 @@
             <div class="group-icon" id="group-icon">
               <i class="fas fa-users"></i>
             </div>
-            <button class="change-group-icon" id="change-group-icon">
-              <i class="fas fa-camera"></i>
-            </button>
           </div>
           <div class="group-name-input">
             <input type="text" id="group-name" placeholder="اسم المجموعة">
@@ -481,7 +433,7 @@
           <div class="group-participants">
             <h4>المشاركون</h4>
             <div class="participants-list" id="group-participants">
-              <!-- Participants will be added here -->
+              <!-- المشاركون يضافون هنا -->
             </div>
             <button class="add-participant-btn" id="add-group-participant">
               <i class="fas fa-plus"></i>
@@ -491,7 +443,7 @@
         </div>
       </div>
 
-      <!-- Context Menu -->
+      <!-- قائمة السياق للرسائل -->
       <div class="context-menu hidden" id="context-menu">
         <div class="context-menu-backdrop" id="context-backdrop"></div>
         <div class="context-menu-content">
@@ -503,14 +455,6 @@
             <i class="fas fa-copy"></i>
             <span>نسخ</span>
           </div>
-          <div class="context-item" id="context-forward">
-            <i class="fas fa-share"></i>
-            <span>إعادة إرسال</span>
-          </div>
-          <div class="context-item" id="context-star">
-            <i class="far fa-star"></i>
-            <span>تمييز بنجمة</span>
-          </div>
           <div class="context-divider"></div>
           <div class="context-item danger" id="context-delete">
             <i class="fas fa-trash"></i>
@@ -519,7 +463,7 @@
         </div>
       </div>
 
-      <!-- Confirm Dialog -->
+      <!-- مربع تأكيد الحذف -->
       <div class="confirm-dialog hidden" id="confirm-dialog">
         <div class="confirm-backdrop"></div>
         <div class="confirm-content">
@@ -532,94 +476,22 @@
         </div>
       </div>
 
-      <!-- Forward Panel -->
-      <div class="forward-panel hidden" id="forward-panel">
-        <div class="panel-header">
-          <button class="panel-close" id="close-forward">
-            <i class="fas fa-arrow-right"></i>
-          </button>
-          <h3>إعادة إرسال إلى</h3>
-        </div>
-        <div class="forward-search">
-          <i class="fas fa-search"></i>
-          <input type="text" id="forward-search" placeholder="بحث...">
-        </div>
-        <div class="forward-list" id="forward-list">
-          <!-- Forward targets will be loaded here -->
-        </div>
-      </div>
-
-      <!-- Media Viewer -->
+      <!-- عارض الوسائط -->
       <div class="media-viewer hidden" id="media-viewer">
         <div class="media-viewer-header">
           <button class="media-close" id="media-close">
             <i class="fas fa-times"></i>
           </button>
           <span class="media-title" id="media-title">الصورة</span>
-          <button class="media-info-btn" id="media-info">
-            <i class="fas fa-info-circle"></i>
-          </button>
         </div>
         <div class="media-viewer-content">
           <img id="media-image" class="hidden" src="" alt="">
           <video id="media-video" class="hidden" controls></video>
         </div>
-        <div class="media-viewer-footer">
-          <button class="media-action" id="media-forward">
-            <i class="fas fa-share"></i>
-            <span>إعادة إرسال</span>
-          </button>
-          <button class="media-action" id="media-download">
-            <i class="fas fa-download"></i>
-            <span>تحميل</span>
-          </button>
-          <button class="media-action" id="media-star">
-            <i class="far fa-star"></i>
-            <span>تمييز</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Story Viewer -->
-      <div class="story-viewer hidden" id="story-viewer">
-        <div class="story-container">
-          <div class="story-item active" id="current-story">
-            <div class="story-progress">
-              <div class="progress-bar">
-                <div class="progress" id="story-progress"></div>
-              </div>
-            </div>
-            <div class="story-header">
-              <div class="story-user">
-                <img id="story-user-avatar" src="/avatars/default.png" alt="">
-                <div class="story-user-info">
-                  <span id="story-user-name">المستخدم</span>
-                  <span id="story-time">منذ ساعة</span>
-                </div>
-              </div>
-              <div class="story-actions">
-                <button class="story-action-btn" id="story-close">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-            </div>
-            <div class="story-content" id="story-content">
-              <!-- Story content -->
-            </div>
-            <div class="story-footer">
-              <div class="story-reactions">
-                <button class="story-reaction" data-emoji="❤️">❤️</button>
-                <button class="story-reaction" data-emoji="👍">👍</button>
-                <button class="story-reaction" data-emoji="😂">😂</button>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- Hidden File Inputs -->
-    <input type="file" id="file-input" multiple hidden>
+    <!-- ملفات الإدخال المخفية -->
     <input type="file" id="image-input" accept="image/*" multiple hidden>
     <input type="file" id="audio-input" accept="audio/*" hidden>
     <input type="file" id="document-input" accept=".pdf,.doc,.docx,.txt" hidden>

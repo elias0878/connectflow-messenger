@@ -1,15 +1,22 @@
 /**
- * ConnectFlow Messenger - Simplified Working Version
+ * ConnectFlow Messenger - تطبيق العميل
+ * واجهة المستخدم والمنطق الأمامي
  */
 
 class ConnectFlowApp {
   constructor() {
+    // حالة التطبيق
     this.currentUser = null;
     this.selectedChat = null;
     this.socket = null;
     this.messages = [];
     this.chats = [];
     this.users = [];
+    this.groups = [];
+    this.calls = [];
+    this.statuses = [];
+    
+    // حالة الإدخال
     this.isRecording = false;
     this.recordingStartTime = null;
     this.mediaRecorder = null;
@@ -17,8 +24,13 @@ class ConnectFlowApp {
     this.recordingTimer = null;
     this.typingTimeout = null;
     this.replyMessage = null;
-    this.darkMode = false;
+    this.forwardMessage = null;
     
+    // الإعدادات
+    this.darkMode = false;
+    this.currentView = 'chats';
+    
+    // تهيئة التطبيق
     this.init();
   }
 
@@ -28,7 +40,7 @@ class ConnectFlowApp {
     this.bindEvents();
   }
 
-  // ==================== Authentication ====================
+  // ==================== المصادقة ====================
 
   async checkAuth() {
     try {
@@ -64,7 +76,7 @@ class ConnectFlowApp {
         this.connectSocket();
         this.loadData();
       } else {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || 'فشل تسجيل الدخول');
       }
     } catch (error) {
       throw error;
@@ -87,7 +99,7 @@ class ConnectFlowApp {
         this.connectSocket();
         this.loadData();
       } else {
-        throw new Error(data.error || 'Registration failed');
+        throw new Error(data.error || 'فشل إنشاء الحساب');
       }
     } catch (error) {
       throw error;
@@ -108,7 +120,7 @@ class ConnectFlowApp {
     }
   }
 
-  // ==================== Socket Connection ====================
+  // ==================== Socket.IO ====================
 
   connectSocket() {
     const token = this.getCookie('token');
@@ -160,9 +172,10 @@ class ConnectFlowApp {
   }
 
   handleReceiveMessage(message) {
+    // إضافة الرسالة للمصفوفة
     this.messages.push(message);
     
-    // Update or create chat
+    // تحديث أو إنشاء دردشة
     const chatKey = message.sender_id === this.currentUser.id ? message.receiver_id : message.sender_id;
     let chat = this.chats.find(c => c.id === chatKey);
     
@@ -199,18 +212,29 @@ class ConnectFlowApp {
   }
 
   handleMessageSent(message) {
+    // البحث عن الرسالة المؤقتة واستبدالها
     const existingIndex = this.messages.findIndex(m => m.tempId === message.tempId);
     if (existingIndex !== -1) {
       this.messages[existingIndex] = { ...message, tempId: undefined };
+      
+      // تحديث العنصر في DOM
+      const messageElement = document.querySelector(`[data-temp-id="${message.tempId}"]`);
+      if (messageElement) {
+        messageElement.dataset.messageId = message.id;
+        messageElement.dataset.tempId = '';
+        messageElement.classList.remove('pending');
+      }
     } else {
+      // إذا لم تكن موجودة، نضيفها
       this.messages.push(message);
     }
     
-    const messageElement = document.querySelector(`[data-temp-id="${message.tempId}"]`);
-    if (messageElement) {
-      messageElement.dataset.messageId = message.id;
-      messageElement.dataset.tempId = '';
-      messageElement.classList.remove('pending');
+    // تحديث قائمة الدردشات
+    const chat = this.chats.find(c => c.id === message.receiver_id);
+    if (chat) {
+      chat.lastMessage = this.formatLastMessage(message);
+      chat.lastMessageTime = message.created_at;
+      this.renderChatsList();
     }
   }
 
@@ -219,19 +243,18 @@ class ConnectFlowApp {
     if (message.type === 'audio') return '🎵 رسالة صوتية';
     if (message.type === 'video') return '🎬 فيديو';
     if (message.type === 'document') return '📄 مستند';
-    if (message.type === 'location') return '📍 موقع';
-    if (message.type === 'contact') return '👤 جهة اتصال';
     if (message.content?.length > 30) return message.content.substring(0, 30) + '...';
     return message.content || 'وسائط';
   }
 
-  // ==================== Data Loading ====================
+  // ==================== تحميل البيانات ====================
 
   async loadData() {
     await Promise.all([
       this.loadChats(),
       this.loadUsers(),
-      this.loadCalls()
+      this.loadCalls(),
+      this.loadStatuses()
     ]);
   }
 
@@ -244,6 +267,7 @@ class ConnectFlowApp {
     } catch (error) {
       console.error('Error loading chats:', error);
       this.chats = [];
+      this.renderChatsList();
     }
   }
 
@@ -256,16 +280,7 @@ class ConnectFlowApp {
     } catch (error) {
       console.error('Error loading users:', error);
       this.users = [];
-    }
-  }
-
-  async loadCalls() {
-    try {
-      const response = await fetch('/api/calls');
-      const data = await response.json();
-      this.renderCallsList(data.calls || []);
-    } catch (error) {
-      console.error('Error loading calls:', error);
+      this.renderNewChatContacts();
     }
   }
 
@@ -282,12 +297,39 @@ class ConnectFlowApp {
     }
   }
 
-  // ==================== Messaging ====================
+  async loadCalls() {
+    try {
+      const response = await fetch('/api/calls');
+      const data = await response.json();
+      this.calls = data.calls || [];
+      this.renderCallsList();
+    } catch (error) {
+      console.error('Error loading calls:', error);
+      this.calls = [];
+      this.renderCallsList();
+    }
+  }
+
+  async loadStatuses() {
+    try {
+      const response = await fetch('/api/status');
+      const data = await response.json();
+      this.statuses = data.statuses || [];
+      this.renderStatusesList();
+    } catch (error) {
+      console.error('Error loading statuses:', error);
+      this.statuses = [];
+      this.renderStatusesList();
+    }
+  }
+
+  // ==================== إرسال الرسائل ====================
 
   sendMessage(content, type = 'text', fileUrl = null) {
     if (!this.selectedChat) return;
-
-    const tempId = Date.now().toString();
+    
+    const tempId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    
     const message = {
       tempId,
       sender_id: this.currentUser.id,
@@ -303,6 +345,7 @@ class ConnectFlowApp {
     this.messages.push(message);
     this.appendMessage(message, true);
 
+    // إرسال عبر Socket
     this.socket.emit('send_message', {
       receiverId: this.selectedChat.id,
       content: content || '',
@@ -310,8 +353,12 @@ class ConnectFlowApp {
       fileUrl
     });
 
+    // إعادة تعيين الإدخال
     document.getElementById('message-input').value = '';
     this.autoResizeTextarea();
+    
+    // إيقاف مؤشر الكتابة
+    this.socket.emit('stop_typing', { receiverId: this.selectedChat.id });
   }
 
   appendMessage(message, isSent) {
@@ -323,7 +370,6 @@ class ConnectFlowApp {
 
   createMessageElement(message, isSent) {
     const time = this.formatTime(message.created_at);
-    const date = this.formatDate(message.created_at);
     
     let content = '';
     
@@ -338,9 +384,6 @@ class ConnectFlowApp {
           <button class="audio-play-btn" onclick="app.playAudio(this, '${message.file_url}')">
             <i class="fas fa-play"></i>
           </button>
-          <div class="audio-info">
-            <span class="audio-duration">0:30</span>
-          </div>
         </div>`;
         break;
       case 'video':
@@ -354,23 +397,19 @@ class ConnectFlowApp {
           <div class="document-info">
             <span class="document-name">${message.content || 'مستند'}</span>
           </div>
-          <button class="document-download" onclick="window.open('${message.file_url}', '_blank')">
-            <i class="fas fa-download"></i>
-          </button>
         </div>`;
         break;
       default:
         content = `<div class="message-bubble text">${this.escapeHtml(message.content)}</div>`;
     }
 
-    const statusIcons = isSent ? '<span class="message-status sent"><i class="fas fa-clock"></i></span>' : '';
+    const statusIcon = isSent ? '<span class="message-status sent"><i class="fas fa-clock"></i></span>' : '';
 
     return `
       <div class="message ${isSent ? 'sent' : 'received'}" 
            data-message-id="${message.id || message.tempId}" 
            data-temp-id="${message.tempId || ''}"
-           onclick="app.showMessageContextMenu(event, '${message.id || message.tempId}')"
-           ondblclick="app.startReply('${message.id || message.tempId}')">
+           onclick="app.showMessageContextMenu(event, '${message.id || message.tempId}')">
         ${!isSent ? `
           <div class="message-avatar">
             <img src="${this.selectedChat?.avatar || '/avatars/default.png'}" alt="">
@@ -380,7 +419,7 @@ class ConnectFlowApp {
           ${content}
           <div class="message-meta">
             <span class="message-time">${time}</span>
-            ${statusIcons}
+            ${statusIcon}
           </div>
         </div>
       </div>
@@ -441,7 +480,7 @@ class ConnectFlowApp {
     }
   }
 
-  // ==================== Chat Operations ====================
+  // ==================== قائمة الدردشات ====================
 
   renderChatsList() {
     const container = document.getElementById('chats-list');
@@ -485,11 +524,11 @@ class ConnectFlowApp {
         </div>
         <div class="chat-info">
           <div class="chat-header-info">
-            <span class="chat-name">${chat.name}</span>
+            <span class="chat-name">${this.escapeHtml(chat.name)}</span>
             <span class="chat-time">${time}</span>
           </div>
           <div class="chat-preview">
-            <span class="chat-last-message">${chat.lastMessage || 'لا توجد رسائل'}</span>
+            <span class="chat-last-message">${this.escapeHtml(chat.lastMessage || 'لا توجد رسائل')}</span>
             ${unreadBadge}
           </div>
         </div>
@@ -498,23 +537,53 @@ class ConnectFlowApp {
   }
 
   async openChat(chatId) {
-    const chat = this.chats.find(c => c.id === chatId) || this.users.find(u => u.id === chatId);
+    // البحث في الدردشات أولاً ثم في المستخدمين
+    let chat = this.chats.find(c => c.id === chatId);
+    
+    if (!chat) {
+      const user = this.users.find(u => u.id === chatId);
+      if (user) {
+        chat = {
+          id: chatId,
+          type: 'private',
+          name: user.username,
+          avatar: user.avatar || '/avatars/default.png',
+          lastMessage: '',
+          lastMessageTime: new Date().toISOString(),
+          unreadCount: 0,
+          is_online: user.is_online || 0
+        };
+        // إضافة للدردشات إذا لم تكن موجودة
+        if (!this.chats.find(c => c.id === chatId)) {
+          this.chats.unshift(chat);
+        }
+      }
+    }
+    
     if (!chat) return;
 
     this.selectedChat = chat;
     
+    // إعادة تعيين عداد الرسائل غير المقروءة
     if (chat.unreadCount) {
       chat.unreadCount = 0;
       this.renderChatsList();
     }
 
+    // إظهار نافذة الدردشة
     document.getElementById('chat-window').classList.remove('hidden');
     document.getElementById('new-chat-panel').classList.add('hidden');
     document.getElementById('new-group-panel').classList.add('hidden');
     document.getElementById('settings-panel').classList.add('hidden');
 
+    // تحديث الرأس
     this.updateChatHeader(chat);
+    
+    // تحميل الرسائل
     await this.loadMessages(chatId);
+    
+    // إخفاء الرد المحدد
+    this.hideReplyPreview();
   }
 
   updateChatHeader(chat) {
@@ -524,7 +593,7 @@ class ConnectFlowApp {
         <img src="${chat.avatar || '/avatars/default.png'}" alt="${chat.name}">
       </div>
       <div class="user-details">
-        <span class="username">${chat.name}</span>
+        <span class="username">${this.escapeHtml(chat.name)}</span>
         <span class="status ${chat.is_online ? 'online' : ''}" id="chat-status-text">
           ${chat.is_online ? 'متصل الآن' : 'غير متصل'}
         </span>
@@ -539,22 +608,28 @@ class ConnectFlowApp {
     this.hideReplyPreview();
   }
 
-  // ==================== Users & Contacts ====================
+  // ==================== جهات الاتصال ====================
 
   renderNewChatContacts() {
     const container = document.getElementById('new-chat-contacts');
-    if (this.users.length === 0) {
-      container.innerHTML = '<p style="padding: 20px; text-align: center; color: var(--text-muted);">لا توجد جهات اتصال بعد</p>';
+    const searchTerm = document.getElementById('new-chat-search')?.value?.toLowerCase() || '';
+    
+    let filteredUsers = this.users.filter(user =>
+      user.username.toLowerCase().includes(searchTerm)
+    );
+    
+    if (filteredUsers.length === 0) {
+      container.innerHTML = '<p style="padding: 20px; text-align: center; color: var(--text-muted);">لا توجد جهات اتصال</p>';
       return;
     }
     
-    container.innerHTML = this.users.map(user => `
+    container.innerHTML = filteredUsers.map(user => `
       <div class="contact-item" data-user-id="${user.id}" onclick="app.startChatWithUser('${user.id}')">
         <div class="contact-avatar">
           <img src="${user.avatar || '/avatars/default.png'}" alt="${user.username}">
         </div>
         <div class="contact-info">
-          <span class="contact-name">${user.username}</span>
+          <span class="contact-name">${this.escapeHtml(user.username)}</span>
           <span class="contact-status">${user.is_online ? 'متصل الآن' : 'غير متصل'}</span>
         </div>
       </div>
@@ -585,12 +660,12 @@ class ConnectFlowApp {
     this.renderChatsList();
   }
 
-  // ==================== Calls ====================
+  // ==================== قائمة المكالمات ====================
 
-  renderCallsList(calls) {
+  renderCallsList() {
     const container = document.getElementById('calls-list');
     
-    if (calls.length === 0) {
+    if (this.calls.length === 0) {
       container.innerHTML = `
         <div class="empty-calls">
           <div class="empty-icon"><i class="fas fa-phone-slash"></i></div>
@@ -601,22 +676,21 @@ class ConnectFlowApp {
       return;
     }
 
-    container.innerHTML = calls.map(call => `
+    container.innerHTML = this.calls.map(call => `
       <div class="call-item" data-call-id="${call.id}">
         <div class="call-avatar">
           <img src="${call.userAvatar || '/avatars/default.png'}" alt="${call.userName}">
         </div>
         <div class="call-info">
-          <span class="call-name">${call.userName}</span>
+          <span class="call-name">${this.escapeHtml(call.userName)}</span>
           <span class="call-details">
             <i class="fas fa-arrow-${call.direction === 'outgoing' ? 'up-right' : 'down-left'}"></i>
             ${this.formatCallTime(call.timestamp)}
-            <span class="call-duration">${call.duration || '0:00'}</span>
           </span>
         </div>
         <div class="call-actions">
-          <button class="call-action-btn" onclick="app.startCall('${call.userId}', '${call.type}')">
-            <i class="fas fa-phone-alt ${call.type === 'video' ? 'video' : ''}"></i>
+          <button class="call-action-btn" onclick="app.startCall('${call.userId}', 'voice')">
+            <i class="fas fa-phone-alt"></i>
           </button>
         </div>
       </div>
@@ -628,53 +702,60 @@ class ConnectFlowApp {
     alert('ميزة المكالمات ستكون متاحة قريباً!');
   }
 
-  // ==================== File Upload ====================
+  // ==================== قائمة الحالات ====================
 
-  async uploadFile(file, type) {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch(`/api/upload/${type}`, {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        return data.url;
-      } else {
-        throw new Error(data.error || 'Upload failed');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
-    }
-  }
-
-  async handleFileSelect(event, type) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      const url = await this.uploadFile(file, type);
+  renderStatusesList() {
+    const container = document.getElementById('status-list');
+    
+    // إضافة حالتك أولاً
+    let html = `
+      <div class="status-section">
+        <h3>حالتك</h3>
+        <div class="status-list-scroll">
+          <div class="status-item my-status">
+            <div class="status-avatar">
+              <img src="${this.currentUser?.avatar || '/avatars/default.png'}" alt="حالتك">
+              <button class="status-add-btn" onclick="app.createStatus()">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <span class="status-name">حالتك</span>
+          </div>
+    `;
+    
+    // إضافة حالات الأصدقاء
+    if (this.statuses.length > 0) {
+      html += `
+          <div style="margin-right: 12px; padding-right: 12px; border-right: 1px solid var(--border-light);">
+            <h3>التحديثات الحديثة</h3>
+          </div>
+      `;
       
-      if (type === 'image') {
-        this.sendMessage(file.name, 'image', url);
-      } else if (type === 'audio') {
-        this.sendMessage('رسالة صوتية', 'audio', url);
-      } else if (type === 'camera') {
-        this.sendMessage('صورة', 'image', url);
-      }
-    } catch (error) {
-      console.error('File upload error:', error);
-      alert('فشل في رفع الملف');
+      this.statuses.forEach(status => {
+        html += `
+          <div class="status-item" onclick="app.viewStatus('${status.id}')">
+            <div class="status-avatar">
+              <img src="${status.userAvatar}" alt="${status.userName}">
+            </div>
+            <span class="status-name">${this.escapeHtml(status.userName)}</span>
+          </div>
+        `;
+      });
     }
     
-    event.target.value = '';
+    html += '</div></div>';
+    container.innerHTML = html;
   }
 
-  // ==================== Voice Recording ====================
+  createStatus() {
+    alert('ميزة الحالات ستكون متاحة قريباً!');
+  }
+
+  viewStatus(statusId) {
+    alert('عارض الحالات سيكون متاحاً قريباً!');
+  }
+
+  // ==================== تسجيل الصوت ====================
 
   async startRecording() {
     try {
@@ -730,11 +811,55 @@ class ConnectFlowApp {
     document.getElementById('send-btn').classList.add('hidden');
   }
 
-  // ==================== Audio Player ====================
+  // ==================== رفع الملفات ====================
+
+  async uploadFile(file, type) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`/api/upload/${type}`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        return data.url;
+      } else {
+        throw new Error(data.error || 'فشل رفع الملف');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
+  }
+
+  async handleFileSelect(event, type) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const url = await this.uploadFile(file, type);
+      
+      if (type === 'image' || type === 'camera') {
+        this.sendMessage(file.name, 'image', url);
+      } else if (type === 'audio') {
+        this.sendMessage('رسالة صوتية', 'audio', url);
+      } else if (type === 'document') {
+        this.sendMessage(file.name, 'document', url);
+      }
+    } catch (error) {
+      console.error('File upload error:', error);
+      alert('فشل في رفع الملف');
+    }
+    
+    event.target.value = '';
+  }
+
+  // ==================== تشغيل الصوت ====================
 
   playAudio(button, url) {
-    const audioContainer = button.closest('.audio-message') || button.closest('.message-bubble.audio');
-    
     const audio = new Audio(url);
     
     if (button.querySelector('i').classList.contains('fa-play')) {
@@ -753,26 +878,21 @@ class ConnectFlowApp {
     }
   }
 
-  // ==================== Reply ====================
+  // ==================== عارض الوسائط ====================
 
-  startReply(messageId) {
-    const message = this.messages.find(m => m.id === messageId);
-    if (!message) return;
-
-    this.replyMessage = message;
+  viewImage(url) {
+    const viewer = document.getElementById('media-viewer');
+    const img = document.getElementById('media-image');
+    const video = document.getElementById('media-video');
     
-    const replyPreview = document.getElementById('reply-preview');
-    replyPreview.querySelector('.reply-sender').textContent = message.sender_id === this.currentUser.id ? 'أنت' : this.selectedChat?.name || 'مستخدم';
-    replyPreview.querySelector('.reply-content').textContent = message.content?.substring(0, 50) || 'وسائط';
-    replyPreview.classList.remove('hidden');
+    video.classList.add('hidden');
+    img.classList.remove('hidden');
+    img.src = url;
+    
+    viewer.classList.remove('hidden');
   }
 
-  hideReplyPreview() {
-    this.replyMessage = null;
-    document.getElementById('reply-preview').classList.add('hidden');
-  }
-
-  // ==================== Context Menu ====================
+  // ==================== قائمة السياق ====================
 
   showMessageContextMenu(event, messageId) {
     event.stopPropagation();
@@ -780,8 +900,10 @@ class ConnectFlowApp {
     const menu = document.getElementById('context-menu');
     const backdrop = document.getElementById('context-backdrop');
     
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
+    // تحديد الموقع
+    menu.style.left = `${Math.min(event.clientX, window.innerWidth - 200)}px`;
+    menu.style.top = `${Math.min(event.clientY, window.innerHeight - 200)}px`;
+    
     menu.classList.remove('hidden');
     backdrop.classList.remove('hidden');
 
@@ -792,11 +914,6 @@ class ConnectFlowApp {
 
     document.getElementById('context-copy').onclick = () => {
       this.copyMessage(messageId);
-      this.hideContextMenu();
-    };
-
-    document.getElementById('context-forward').onclick = () => {
-      this.showForwardPanel(messageId);
       this.hideContextMenu();
     };
 
@@ -812,14 +929,33 @@ class ConnectFlowApp {
   }
 
   copyMessage(messageId) {
-    const message = this.messages.find(m => m.id === messageId);
+    const message = this.messages.find(m => m.id === messageId || m.tempId === messageId);
     if (message?.content) {
       navigator.clipboard.writeText(message.content);
       this.showToast('تم نسخ النص');
     }
   }
 
-  // ==================== Delete Confirmation ====================
+  // ==================== الرد على الرسائل ====================
+
+  startReply(messageId) {
+    const message = this.messages.find(m => m.id === messageId || m.tempId === messageId);
+    if (!message) return;
+
+    this.replyMessage = message;
+    
+    const replyPreview = document.getElementById('reply-preview');
+    replyPreview.querySelector('.reply-sender').textContent = message.sender_id === this.currentUser.id ? 'أنت' : this.selectedChat?.name || 'مستخدم';
+    replyPreview.querySelector('.reply-content').textContent = message.content?.substring(0, 50) || 'وسائط';
+    replyPreview.classList.remove('hidden');
+  }
+
+  hideReplyPreview() {
+    this.replyMessage = null;
+    document.getElementById('reply-preview').classList.add('hidden');
+  }
+
+  // ==================== تأكيد الحذف ====================
 
   showDeleteConfirmation(messageId) {
     const dialog = document.getElementById('confirm-dialog');
@@ -835,74 +971,7 @@ class ConnectFlowApp {
     };
   }
 
-  // ==================== Forward ====================
-
-  showForwardPanel(messageId) {
-    const message = this.messages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    this.forwardMessage = message;
-    const forwardPanel = document.getElementById('forward-panel');
-    forwardPanel.classList.remove('hidden');
-    
-    const forwardList = document.getElementById('forward-list');
-    forwardList.innerHTML = this.chats.map(chat => `
-      <div class="forward-item" data-chat-id="${chat.id}" onclick="app.forwardToChat('${chat.id}')">
-        <div class="forward-avatar">
-          <img src="${chat.avatar}" alt="${chat.name}">
-        </div>
-        <div class="forward-info">
-          <span class="forward-name">${chat.name}</span>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  async forwardToChat(chatId) {
-    if (!this.forwardMessage) return;
-
-    this.socket.emit('send_message', {
-      receiverId: chatId,
-      content: this.forwardMessage.content || '',
-      type: this.forwardMessage.type,
-      fileUrl: this.forwardMessage.file_url
-    });
-
-    document.getElementById('forward-panel').classList.add('hidden');
-    this.forwardMessage = null;
-    this.showToast('تم إعادة إرسال الرسالة');
-  }
-
-  // ==================== Media Viewer ====================
-
-  viewImage(url) {
-    const viewer = document.getElementById('media-viewer');
-    const img = document.getElementById('media-image');
-    const video = document.getElementById('media-video');
-    
-    video.classList.add('hidden');
-    img.classList.remove('hidden');
-    img.src = url;
-    
-    viewer.classList.remove('hidden');
-  }
-
-  // ==================== Panels ====================
-
-  showNewChatPanel() {
-    document.getElementById('new-chat-panel').classList.remove('hidden');
-    this.renderNewChatContacts();
-  }
-
-  showSettingsPanel() {
-    document.getElementById('settings-panel').classList.remove('hidden');
-    this.updateSettingsUI();
-  }
-
-  showNewGroupPanel() {
-    document.getElementById('new-group-panel').classList.remove('hidden');
-    document.getElementById('new-chat-panel').classList.add('hidden');
-  }
+  // ==================== إنشاء المجموعات ====================
 
   async createGroup() {
     const name = document.getElementById('group-name').value.trim();
@@ -921,12 +990,31 @@ class ConnectFlowApp {
       const data = await response.json();
       if (data.success) {
         document.getElementById('new-group-panel').classList.add('hidden');
+        document.getElementById('group-name').value = '';
         this.openChat(data.group.id);
         this.showToast('تم إنشاء المجموعة');
+        this.loadGroups();
       }
     } catch (error) {
       console.error('Create group error:', error);
     }
+  }
+
+  async loadGroups() {
+    try {
+      const response = await fetch('/api/groups');
+      const data = await response.json();
+      this.groups = data.groups || [];
+    } catch (error) {
+      console.error('Error loading groups:', error);
+    }
+  }
+
+  // ==================== الإعدادات ====================
+
+  showSettingsPanel() {
+    document.getElementById('settings-panel').classList.remove('hidden');
+    this.updateSettingsUI();
   }
 
   updateSettingsUI() {
@@ -937,29 +1025,11 @@ class ConnectFlowApp {
     }
   }
 
-  // ==================== View Navigation ====================
-
-  switchView(view) {
-    this.currentView = view;
-    
-    document.querySelectorAll('.header-tab').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.view === view);
-    });
-    
-    document.querySelectorAll('.content-view').forEach(content => {
-      content.classList.toggle('active', content.id === `${view}-view`);
-    });
-  }
-
-  // ==================== Dark Mode ====================
-
   toggleDarkMode() {
     this.darkMode = !this.darkMode;
     document.body.classList.toggle('dark-mode', this.darkMode);
     this.saveSettings();
   }
-
-  // ==================== Settings ====================
 
   loadSettings() {
     const settings = JSON.parse(localStorage.getItem('connectflow-settings') || '{}');
@@ -971,7 +1041,27 @@ class ConnectFlowApp {
     localStorage.setItem('connectflow-settings', JSON.stringify({ darkMode: this.darkMode }));
   }
 
-  // ==================== Utilities ====================
+  // ==================== تبديل العروض ====================
+
+  switchView(view) {
+    this.currentView = view;
+    
+    document.querySelectorAll('.header-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.view === view);
+    });
+    
+    document.querySelectorAll('.content-view').forEach(content => {
+      content.classList.toggle('active', content.id === `${view}-view`);
+    });
+    
+    // إغلاق النافذة المفتوحة
+    document.getElementById('chat-window').classList.add('hidden');
+    document.getElementById('new-chat-panel').classList.add('hidden');
+    document.getElementById('new-group-panel').classList.add('hidden');
+    document.getElementById('settings-panel').classList.add('hidden');
+  }
+
+  // ==================== الأدوات المساعدة ====================
 
   formatTime(dateString) {
     const date = new Date(dateString);
@@ -1038,13 +1128,17 @@ class ConnectFlowApp {
 
   scrollToBottom() {
     const container = document.getElementById('chat-content');
-    container.scrollTop = container.scrollHeight;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }
 
   autoResizeTextarea() {
     const textarea = document.getElementById('message-input');
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    }
   }
 
   showTypingIndicator() {
@@ -1086,19 +1180,22 @@ class ConnectFlowApp {
     const user = this.users.find(u => u.id === userId);
     if (user) {
       user.is_online = isOnline ? 1 : 0;
+      this.renderNewChatContacts();
     }
     
     if (this.selectedChat?.id === userId) {
       const statusEl = document.getElementById('chat-status-text');
-      statusEl.textContent = isOnline ? 'متصل الآن' : 'غير متصل';
-      statusEl.className = `status ${isOnline ? 'online' : ''}`;
+      if (statusEl) {
+        statusEl.textContent = isOnline ? 'متصل الآن' : 'غير متصل';
+        statusEl.className = `status ${isOnline ? 'online' : ''}`;
+      }
     }
   }
 
-  // ==================== Event Bindings ====================
+  // ==================== ربط الأحداث ====================
 
   bindEvents() {
-    // Auth tabs
+    // تبويبات المصادقة
     document.querySelectorAll('.auth-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
@@ -1108,7 +1205,7 @@ class ConnectFlowApp {
       });
     });
 
-    // Login form
+    // نموذج تسجيل الدخول
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('login-username').value;
@@ -1121,7 +1218,7 @@ class ConnectFlowApp {
       }
     });
 
-    // Register form
+    // نموذج إنشاء حساب
     document.getElementById('register-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('register-username').value;
@@ -1140,7 +1237,7 @@ class ConnectFlowApp {
       }
     });
 
-    // Password toggle
+    // إظهار/إخفاء كلمة المرور
     document.querySelectorAll('.toggle-password').forEach(btn => {
       btn.addEventListener('click', () => {
         const input = document.getElementById(btn.dataset.target);
@@ -1157,12 +1254,12 @@ class ConnectFlowApp {
       });
     });
 
-    // Header tabs
+    // تبويبات الرأس
     document.querySelectorAll('.header-tab').forEach(tab => {
       tab.addEventListener('click', () => this.switchView(tab.dataset.view));
     });
 
-    // Dropdown menu
+    // القائمة المنسدلة
     document.getElementById('header-menu-btn').addEventListener('click', () => {
       document.getElementById('dropdown-menu').classList.toggle('active');
     });
@@ -1189,10 +1286,10 @@ class ConnectFlowApp {
       document.getElementById('dropdown-menu').classList.remove('active');
     });
 
-    // Chat back
+    // زر الرجوع من الدردشة
     document.getElementById('chat-back').addEventListener('click', () => this.closeChat());
 
-    // Message input
+    // إدخال الرسالة
     const messageInput = document.getElementById('message-input');
     messageInput.addEventListener('input', () => {
       this.autoResizeTextarea();
@@ -1219,7 +1316,7 @@ class ConnectFlowApp {
     document.getElementById('record-close').addEventListener('click', () => this.stopRecording());
     document.getElementById('send-voice').addEventListener('click', () => this.stopRecording());
 
-    // Input actions
+    // أزرار الإرفاق والرموز التعبيرية
     document.getElementById('emoji-btn').addEventListener('click', () => {
       document.getElementById('emoji-panel').classList.toggle('hidden');
       document.getElementById('attach-panel').classList.add('hidden');
@@ -1234,7 +1331,7 @@ class ConnectFlowApp {
       document.getElementById('camera-input').click();
     });
 
-    // Attachment options
+    // خيارات المرفقات
     document.querySelectorAll('.attach-option').forEach(option => {
       option.addEventListener('click', () => {
         const type = option.dataset.type;
@@ -1242,8 +1339,7 @@ class ConnectFlowApp {
           'document': 'document-input',
           'gallery': 'image-input',
           'audio': 'audio-input',
-          'camera': 'camera-input',
-          'contact': 'file-input'
+          'camera': 'camera-input'
         };
         if (inputMap[type]) {
           document.getElementById(inputMap[type]).click();
@@ -1252,19 +1348,19 @@ class ConnectFlowApp {
       });
     });
 
-    // File inputs
+    // ملفات الإدخال
     document.getElementById('image-input').addEventListener('change', (e) => this.handleFileSelect(e, 'image'));
     document.getElementById('audio-input').addEventListener('change', (e) => this.handleFileSelect(e, 'audio'));
     document.getElementById('camera-input').addEventListener('change', (e) => this.handleFileSelect(e, 'camera'));
     document.getElementById('document-input').addEventListener('change', (e) => this.handleFileSelect(e, 'document'));
     document.getElementById('avatar-input').addEventListener('change', (e) => this.handleFileSelect(e, 'avatar'));
 
-    // FAB
+    // أزرار FAB
     document.getElementById('main-fab').addEventListener('click', () => this.showNewChatPanel());
     document.getElementById('fab-new-chat').addEventListener('click', () => this.showNewChatPanel());
     document.getElementById('fab-new-group').addEventListener('click', () => this.showNewGroupPanel());
 
-    // Panels close
+    // إغلاق اللوحات
     document.getElementById('close-new-chat').addEventListener('click', () => {
       document.getElementById('new-chat-panel').classList.add('hidden');
     });
@@ -1274,38 +1370,36 @@ class ConnectFlowApp {
     document.getElementById('close-new-group').addEventListener('click', () => {
       document.getElementById('new-group-panel').classList.add('hidden');
     });
-    document.getElementById('close-forward').addEventListener('click', () => {
-      document.getElementById('forward-panel').classList.add('hidden');
-    });
     document.getElementById('create-new-group-btn').addEventListener('click', () => {
       this.showNewGroupPanel();
       document.getElementById('new-chat-panel').classList.add('hidden');
     });
     document.getElementById('create-group-action').addEventListener('click', () => this.createGroup());
 
-    // Reply preview
+    // إغلاق معاينة الرد
     document.getElementById('reply-preview-close').addEventListener('click', () => this.hideReplyPreview());
 
-    // Context menu backdrop
+    // خلفية قائمة السياق
     document.getElementById('context-backdrop').addEventListener('click', () => this.hideContextMenu());
 
-    // Confirm dialog
+    // خلفية مربع التأكيد
     document.querySelector('.confirm-backdrop')?.addEventListener('click', () => {
       document.getElementById('confirm-dialog').classList.add('hidden');
     });
 
-    // Media viewer
+    // إغلاق عارض الوسائط
     document.getElementById('media-close').addEventListener('click', () => {
       document.getElementById('media-viewer').classList.add('hidden');
     });
 
-    // Dark mode
+    // الوضع الداكن
     document.getElementById('dark-mode-toggle').addEventListener('change', () => this.toggleDarkMode());
 
-    // Search
+    // البحث
     document.getElementById('chat-search')?.addEventListener('input', () => this.renderChatsList());
+    document.getElementById('new-chat-search')?.addEventListener('input', () => this.renderNewChatContacts());
 
-    // Click outside to close panels
+    // النقر خارج العناصر لإغلاقها
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.dropdown-menu') && !e.target.closest('#header-menu-btn')) {
         document.getElementById('dropdown-menu').classList.remove('active');
@@ -1321,13 +1415,23 @@ class ConnectFlowApp {
       }
     });
 
-    // Notification permission
+    // طلب إذن الإشعارات
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }
 
-  // ==================== UI Helpers ====================
+  showNewChatPanel() {
+    document.getElementById('new-chat-panel').classList.remove('hidden');
+    this.renderNewChatContacts();
+  }
+
+  showNewGroupPanel() {
+    document.getElementById('new-group-panel').classList.remove('hidden');
+    document.getElementById('new-chat-panel').classList.add('hidden');
+  }
+
+  // ==================== إظهار الشاشات ====================
 
   showAuthScreen() {
     document.getElementById('splash-screen').classList.add('hidden');
@@ -1339,14 +1443,10 @@ class ConnectFlowApp {
     document.getElementById('splash-screen').classList.add('hidden');
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('main-screen').classList.remove('hidden');
-    
-    if (this.currentUser) {
-      // Update UI with user info
-    }
   }
 }
 
-// Initialize app
+// تهيئة التطبيق عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new ConnectFlowApp();
 });
