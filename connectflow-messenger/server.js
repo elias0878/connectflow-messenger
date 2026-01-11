@@ -1,3 +1,8 @@
+/**
+ * ConnectFlow Messenger - Server
+ * خادم المراسلة الفورية المتكامل
+ */
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -12,14 +17,18 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 // إعدادات البيئة
-const JWT_SECRET = process.env.JWT_SECRET || 'connectflow-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'connectflow-secret-key-2024';
 const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'production';
 
-// إنشاء المجلدات اللازمة
+// إنشاء المجلدات
 const dataDir = path.join(__dirname, 'data');
 const uploadDirs = ['public/uploads', 'public/avatars', dataDir];
 
@@ -30,7 +39,7 @@ uploadDirs.forEach(dir => {
   }
 });
 
-// تهيئة NeDB
+// تهيئة قاعدة البيانات NeDB
 const db = {
   users: Datastore.create({ filename: path.join(dataDir, 'users.db'), autoload: true }),
   messages: Datastore.create({ filename: path.join(dataDir, 'messages.db'), autoload: true }),
@@ -44,9 +53,8 @@ db.users.ensureIndex({ fieldName: 'username', unique: true });
 db.messages.ensureIndex({ fieldName: 'sender_id' });
 db.messages.ensureIndex({ fieldName: 'receiver_id' });
 db.messages.ensureIndex({ fieldName: 'created_at' });
-db.groups.ensureIndex({ fieldName: 'name' });
 
-// إعدادات multer
+// إعدادات رفع الملفات
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const type = req.params.type || 'file';
@@ -63,13 +71,13 @@ const upload = multer({
   storage,
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedImages = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    const allowedAudio = ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4'];
-    
-    if (allowedImages.includes(file.mimetype) || allowedAudio.includes(file.mimetype)) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 
+                          'audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg',
+                          'video/mp4', 'video/webm'];
+    if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('نوع الملف غير مسموح'));
+      cb(new Error('نوع الملف غير مدعوم'));
     }
   }
 });
@@ -85,7 +93,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// التوكن والتحقق
+// دالة التحقق من التوكن
 const verifyToken = (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
   
@@ -138,11 +146,11 @@ app.post('/api/auth/register', async (req, res) => {
       created_at: new Date().toISOString()
     });
     
-    const token = jwt.sign({ userId: user._id, username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     
     res.cookie('token', token, {
       httpOnly: true,
-      secure: NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
     
@@ -152,7 +160,8 @@ app.post('/api/auth/register', async (req, res) => {
         id: user._id, 
         username: user.username, 
         avatar: user.avatar,
-        bio: user.bio 
+        bio: user.bio,
+        is_online: user.is_online
       } 
     });
   } catch (error) {
@@ -184,7 +193,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     res.cookie('token', token, {
       httpOnly: true,
-      secure: NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
     
@@ -195,7 +204,8 @@ app.post('/api/auth/login', async (req, res) => {
         username: user.username, 
         avatar: user.avatar,
         bio: user.bio,
-        phone: user.phone
+        phone: user.phone,
+        is_online: user.is_online
       } 
     });
   } catch (error) {
@@ -233,18 +243,7 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// تحديث الملف الشخصي
-app.put('/api/auth/profile', verifyToken, async (req, res) => {
-  try {
-    const { bio, phone } = req.body;
-    await db.users.update({ _id: req.userId }, { $set: { bio, phone } });
-    res.json({ success: true });
-  } catch (error) {
-    res.json({ success: false, error: 'حدث خطأ' });
-  }
-});
-
-// جلب جهات الاتصال (جميع المستخدمين)
+// جلب جهات الاتصال
 app.get('/api/contacts', verifyToken, async (req, res) => {
   try {
     const users = await db.users.find({ _id: { $ne: req.userId } });
@@ -269,10 +268,9 @@ app.get('/api/contacts', verifyToken, async (req, res) => {
   }
 });
 
-// جلب الدردشات (قائمة المحادثات)
+// جلب قائمة الدردشات
 app.get('/api/chats', verifyToken, async (req, res) => {
   try {
-    // جلب آخر رسالة من كل محادثة
     const allMessages = await db.messages.find({
       $or: [
         { sender_id: req.userId },
@@ -280,7 +278,6 @@ app.get('/api/chats', verifyToken, async (req, res) => {
       ]
     });
     
-    // تجميع الرسائل حسب المستخدم
     const chatMap = new Map();
     
     allMessages.forEach(msg => {
@@ -299,14 +296,11 @@ app.get('/api/chats', verifyToken, async (req, res) => {
       const chat = chatMap.get(otherId);
       if (new Date(msg.created_at) > new Date(chat.lastMessageTime)) {
         chat.lastMessageTime = msg.created_at;
-        chat.lastMessage = msg.type === 'image' ? '📷 صورة' :
-                         msg.type === 'audio' ? '🎵 رسالة صوتية' :
-                         msg.type === 'video' ? '🎬 فيديو' :
-                         msg.content || 'وسائط';
+        chat.lastMessage = this.formatMessageContent(msg);
       }
       
       if (msg.receiver_id === req.userId && !msg.is_read) {
-        chat.unreadCount++;
+        chat.unreadCount = (chat.unreadCount || 0) + 1;
       }
     });
     
@@ -333,6 +327,16 @@ app.get('/api/chats', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'حدث خطأ' });
   }
 });
+
+// دالة مساعدة لتنسيق محتوى الرسالة
+function formatMessageContent(msg) {
+  if (msg.type === 'image') return '📷 صورة';
+  if (msg.type === 'audio') return '🎵 رسالة صوتية';
+  if (msg.type === 'video') return '🎬 فيديو';
+  if (msg.type === 'document') return '📄 مستند';
+  if (msg.content && msg.content.length > 30) return msg.content.substring(0, 30) + '...';
+  return msg.content || 'وسائط';
+}
 
 // جلب الرسائل بين مستخدمين
 app.get('/api/messages/:userId', verifyToken, async (req, res) => {
@@ -393,50 +397,6 @@ app.delete('/api/messages/:messageId', verifyToken, async (req, res) => {
   }
 });
 
-// تحديد الرسائل كمقروءة
-app.post('/api/messages/read', verifyToken, async (req, res) => {
-  try {
-    const { messageIds } = req.body;
-    if (messageIds && messageIds.length > 0) {
-      await db.messages.update(
-        { _id: { $in: messageIds } },
-        { $set: { is_read: 1 } },
-        { multi: true }
-      );
-    }
-    res.json({ success: true });
-  } catch (error) {
-    res.json({ success: false, error: 'حدث خطأ' });
-  }
-});
-
-// ==================== Groups API ====================
-
-// إنشاء مجموعة
-app.post('/api/groups', verifyToken, async (req, res) => {
-  try {
-    const { name, description, participantIds } = req.body;
-    
-    const group = await db.groups.insert({
-      name,
-      description: description || '',
-      avatar: null,
-      admin_id: req.userId,
-      participants: [req.userId, ...(participantIds || [])],
-      created_at: new Date().toISOString(),
-      settings: {
-        allowAddMembers: true,
-        allowEditGroupInfo: true
-      }
-    });
-    
-    res.json({ success: true, group: { ...group, id: group._id } });
-  } catch (error) {
-    console.error('Create group error:', error);
-    res.json({ success: false, error: 'حدث خطأ' });
-  }
-});
-
 // جلب المجموعات
 app.get('/api/groups', verifyToken, async (req, res) => {
   try {
@@ -458,6 +418,27 @@ app.get('/api/groups', verifyToken, async (req, res) => {
   }
 });
 
+// إنشاء مجموعة
+app.post('/api/groups', verifyToken, async (req, res) => {
+  try {
+    const { name, description, participantIds } = req.body;
+    
+    const group = await db.groups.insert({
+      name,
+      description: description || '',
+      avatar: null,
+      admin_id: req.userId,
+      participants: [req.userId, ...(participantIds || [])],
+      created_at: new Date().toISOString()
+    });
+    
+    res.json({ success: true, group: { ...group, id: group._id } });
+  } catch (error) {
+    console.error('Create group error:', error);
+    res.json({ success: false, error: 'حدث خطأ' });
+  }
+});
+
 // جلب رسائل مجموعة
 app.get('/api/groups/:groupId/messages', verifyToken, async (req, res) => {
   try {
@@ -471,28 +452,6 @@ app.get('/api/groups/:groupId/messages', verifyToken, async (req, res) => {
   }
 });
 
-// ==================== Status API ====================
-
-// إنشاء حالة
-app.post('/api/status', verifyToken, async (req, res) => {
-  try {
-    const { content, type } = req.body;
-    
-    const status = await db.statuses.insert({
-      user_id: req.userId,
-      content,
-      type: type || 'text',
-      views: [],
-      created_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    });
-    
-    res.json({ success: true, status: { ...status, id: status._id } });
-  } catch (error) {
-    res.json({ success: false, error: 'حدث خطأ' });
-  }
-});
-
 // جلب الحالات
 app.get('/api/status', verifyToken, async (req, res) => {
   try {
@@ -502,7 +461,6 @@ app.get('/api/status', verifyToken, async (req, res) => {
       user_id: { $ne: req.userId }
     });
     
-    // إضافة معلومات المستخدمين
     const statusesWithUsers = [];
     for (const status of statuses) {
       const user = await db.users.findOne({ _id: status.user_id });
@@ -522,28 +480,6 @@ app.get('/api/status', verifyToken, async (req, res) => {
     res.json({ statuses: statusesWithUsers });
   } catch (error) {
     res.status(500).json({ error: 'حدث خطأ' });
-  }
-});
-
-// ==================== Calls API ====================
-
-// تسجيل مكالمة
-app.post('/api/calls', verifyToken, async (req, res) => {
-  try {
-    const { userId, type, duration } = req.body;
-    
-    const call = await db.calls.insert({
-      caller_id: req.userId,
-      receiver_id: userId,
-      type: type || 'voice',
-      duration: duration || 0,
-      status: 'completed',
-      created_at: new Date().toISOString()
-    });
-    
-    res.json({ success: true, call: { ...call, id: call._id } });
-  } catch (error) {
-    res.json({ success: false, error: 'حدث خطأ' });
   }
 });
 
@@ -581,8 +517,7 @@ app.get('/api/calls', verifyToken, async (req, res) => {
   }
 });
 
-// ==================== Upload API ====================
-
+// رفع الملفات
 app.post('/api/upload/:type', verifyToken, upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -610,6 +545,7 @@ const connectedUsers = new Map();
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
   
+  // المصادقة
   socket.on('authenticate', async (token) => {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
@@ -629,6 +565,7 @@ io.on('connection', (socket) => {
     }
   });
   
+  // إرسال رسالة
   socket.on('send_message', async (data) => {
     if (!socket.userId) return;
     
@@ -653,42 +590,39 @@ io.on('connection', (socket) => {
         content,
         type,
         file_url: fileUrl,
-        created_at: message.created_at
+        created_at: message.created_at,
+        is_read: 0
       };
       
+      // إرسال تأكيد للمرسل
       socket.emit('message_sent', messageData);
       
-      const receiverSocket = connectedUsers.get(receiverId);
-      if (receiverSocket) {
-        io.to(`user_${receiverId}`).emit('receive_message', messageData);
-      }
+      // إرسال للمستقبل
+      io.to(`user_${receiverId}`).emit('receive_message', messageData);
+      
     } catch (error) {
       console.error('Send message error:', error);
     }
   });
   
+  // مؤشر الكتابة
   socket.on('typing', (data) => {
     if (!socket.userId) return;
     const { receiverId } = data;
-    const receiverSocket = connectedUsers.get(receiverId);
-    if (receiverSocket) {
-      io.to(`user_${receiverId}`).emit('user_typing', { 
-        userId: socket.userId, 
-        username: socket.username,
-        receiverId 
-      });
-    }
+    socket.to(`user_${receiverId}`).emit('user_typing', { 
+      userId: socket.userId, 
+      username: socket.username 
+    });
   });
   
+  // إيقاف مؤشر الكتابة
   socket.on('stop_typing', (data) => {
     if (!socket.userId) return;
     const { receiverId } = data;
-    const receiverSocket = connectedUsers.get(receiverId);
-    if (receiverSocket) {
-      io.to(`user_${receiverId}`).emit('user_stop_typing', { userId: socket.userId, receiverId });
-    }
+    socket.to(`user_${receiverId}`).emit('user_stop_typing', { userId: socket.userId });
   });
   
+  // قطع الاتصال
   socket.on('disconnect', async () => {
     if (socket.userId) {
       await db.users.update({ _id: socket.userId }, { $set: { is_online: 0 } });
@@ -699,7 +633,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// ==================== Seed Demo Users ====================
+// ==================== إنشاء مستخدمين تجريبيين ====================
 
 async function seedDemoUsers() {
   try {
@@ -739,11 +673,15 @@ async function seedDemoUsers() {
 
 // بدء الخادم
 server.listen(PORT, async () => {
-  console.log(`\n╔══════════════════════════════════════════╗`);
-  console.log(`║     ConnectFlow Messenger v1.0           ║`);
-  console.log(`║     Port: ${PORT}                              ║`);
-  console.log(`║     Environment: ${NODE_ENV}                   ║`);
-  console.log(`╚══════════════════════════════════════════╝\n`);
+  console.log(`
+╔══════════════════════════════════════════╗
+║     ConnectFlow Messenger v1.0           ║
+║     Port: ${PORT}                              ║
+║     http://localhost:${PORT}                  ║
+╚══════════════════════════════════════════╝
+  `);
   
   await seedDemoUsers();
 });
+
+module.exports = { app, server, io };
