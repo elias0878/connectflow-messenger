@@ -1,11 +1,12 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "nixpacksPath": "connectflow-messenger/nixpacks.toml"
   },
   "deploy": {
-    "startCommand": "cd backend && python main.py",
-    "healthcheckPath": "/health",
+    "startCommand": "cd connectflow-messenger && node server.js",
+    "healthcheckPath": "/api/auth/me",
     "restartPolicy": "always"
   }
 }

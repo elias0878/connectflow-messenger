@@ -2,10 +2,10 @@
   "name": "connectflow-messenger",
   "version": "1.0.0",
   "description": "Real-time social communication platform with messaging, images, voice messages, and stickers",
-  "main": "server.js",
+  "main": "connectflow-messenger/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "cd connectflow-messenger && node server.js",
+    "dev": "cd connectflow-messenger && node server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
