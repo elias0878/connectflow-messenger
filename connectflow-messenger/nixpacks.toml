@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs-20_x", "python3", "gcc", "libcxx", "libcxxabi", "clang"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm rebuild better-sqlite3"]
+
+[start]
+cmd = "node server.js"
