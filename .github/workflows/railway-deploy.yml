@@ -1,0 +1,33 @@
+name: Deploy ConnectFlow Messenger
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install Railway CLI
+        run: |
+          npm install -g @railway/cli
+          
+      - name: Deploy to Railway
+        run: |
+          railway login --token=${{ secrets.RAILWAY_TOKEN }}
+          railway init --name=connectflow-messenger
+          railway up
+          
+      - name: Get deployment URL
+        if: success()
+        run: |
+          railway domain
+          echo "Deployment completed!"
